@@ -1,106 +1,56 @@
 import { Router } from 'express';
-import { jobController } from './controllers/job.controller';
-import { validateRequest } from '../../middleware/validation.middleware';
-import { createJobSchema, updateJobSchema } from './validators/job.validator';
+import { jobController } from '../controllers/job.controller';
+import { validateRequest, validateParams } from '../../middleware/validation.middleware';
+import { createJobSchema, updateJobSchema, failJobSchema } from '../validators/job.validator';
 import { authenticate } from '../../middleware/auth.middleware';
 import { authorize } from '../../middleware/authorization.middleware';
+import { Role } from '@prisma/client';
+import { z } from 'zod';
 
 const router = Router();
 
-// All routes require authentication
 router.use(authenticate);
 
-// Create job
-router.post(
-  '/',
-  validateRequest(createJobSchema),
-  jobController.create
-);
+router.post('/', validateRequest(createJobSchema), jobController.create);
+router.get('/pending', jobController.getPending);
 
-// Get job by ID
-router.get(
-  '/:id',
-  jobController.getById
-);
+// Static routes must come BEFORE the parametric `/:id` routes to avoid
+// `pending` being treated as an id.
+router.get('/business', jobController.getByBusinessId);
+router.get('/business/count', jobController.getCountByBusinessId);
 
-// Get jobs by business ID
-router.get(
-  '/business',
-  jobController.getByBusinessId
-);
+const typeStatusParam = z.object({
+  type: z.string().min(1).max(100),
+});
 
-// Get jobs by type
 router.get(
   '/type/:type',
-  jobController.getByType
+  validateParams(typeStatusParam),
+  jobController.getByType,
 );
-
-// Get jobs by status
-router.get(
-  '/status/:status',
-  jobController.getByStatus
-);
-
-// Get pending jobs
-router.get(
-  '/pending',
-  jobController.getPending
-);
-
-// Update job
-router.put(
-  '/:id',
-  validateRequest(updateJobSchema),
-  jobController.update
-);
-
-// Delete job
-router.delete(
-  '/:id',
-  jobController.delete
-);
-
-// Start job
-router.post(
-  '/:id/start',
-  jobController.start
-);
-
-// Complete job
-router.post(
-  '/:id/complete',
-  jobController.complete
-);
-
-// Fail job
-router.post(
-  '/:id/fail',
-  jobController.fail
-);
-
-// Get job count
-router.get(
-  '/count',
-  authorize(['ADMIN']),
-  jobController.getCount
-);
-
-// Get job count by business ID
-router.get(
-  '/business/count',
-  jobController.getCountByBusinessId
-);
-
-// Get job count by type
 router.get(
   '/type/:type/count',
-  jobController.getCountByType
+  validateParams(typeStatusParam),
+  jobController.getCountByType,
 );
 
-// Get job count by status
+router.get(
+  '/status/:status',
+  validateParams(typeStatusParam),
+  jobController.getByStatus,
+);
 router.get(
   '/status/:status/count',
-  jobController.getCountByStatus
+  validateParams(typeStatusParam),
+  jobController.getCountByStatus,
 );
+
+router.get('/count', authorize([Role.ADMIN]), jobController.getCount);
+router.get('/:id', jobController.getById);
+router.put('/:id', validateRequest(updateJobSchema), jobController.update);
+router.delete('/:id', jobController.delete);
+router.post('/:id/start', jobController.start);
+router.post('/:id/complete', jobController.complete);
+router.post('/:id/fail', validateRequest(failJobSchema), jobController.fail);
 
 export default router;

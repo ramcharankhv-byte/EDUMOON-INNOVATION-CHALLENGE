@@ -1,90 +1,78 @@
-import { healthRepository } from './repositories/health.repository';
-import { prisma } from '../../lib/prisma';
-import { logger } from '../../utils/logger';
+import { redis } from '../../lib/redis';
+import logger from '../../utils/logger';
 
-// Health service
+export interface HealthCheckResult {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  timestamp: string;
+  version: string;
+  uptime: number;
+  checks: Record<string, { status: 'healthy' | 'unhealthy'; message?: string; responseTime?: number }>;
+}
+
+// Health service — performs live liveness probes against Postgres and Redis.
 export class HealthService {
-  async performHealthCheck(...args: any[]) { return null as any; }
-  async getHealthCheckHistory(...args: any[]) { return null as any; }
-  async getLatestHealthCheck(...args: any[]) { return null as any; }
+  async performHealthCheck(): Promise<HealthCheckResult> {
+    const timestamp = new Date().toISOString();
+    const version = process.env.npm_package_version || '1.0.0';
 
-  // Perform health check
-  async performHealthCheck() {
-    const startTime = Date.now();
+    const [database, redisCheck] = await Promise.all([
+      this.checkDatabase(),
+      this.checkRedis(),
+    ]);
 
-    // Check database connection
-    let databaseStatus = 'healthy';
-    let databaseMessage = '';
-    let databaseResponseTime = 0;
+    const checks = { database, redis: redisCheck };
+    const status: HealthCheckResult['status'] =
+      database.status === 'unhealthy' || redisCheck.status === 'unhealthy'
+        ? 'unhealthy'
+        : 'healthy';
 
-    try {
-      const dbStart = Date.now();
-      await prisma.$queryRaw`SELECT 1`;
-      databaseResponseTime = Date.now() - dbStart;
-    } catch (error) {
-      databaseStatus = 'unhealthy';
-      databaseMessage = error.message;
-    }
-
-    // Check Redis connection
-    let redisStatus = 'healthy';
-    let redisMessage = '';
-    let redisResponseTime = 0;
-
-    try {
-      const redisStart = Date.now();
-      // In a real implementation, we would ping Redis
-      // For now, we'll simulate a successful check
-      await new Promise(resolve => setTimeout(resolve, 10)); // Simulate 10ms delay
-      redisResponseTime = Date.now() - redisStart;
-    } catch (error) {
-      redisStatus = 'unhealthy';
-      redisMessage = error.message;
-    }
-
-    // Determine overall status
-    const overallStatus =
-      databaseStatus === 'healthy' && redisStatus === 'healthy'
-        ? 'healthy'
-        : (databaseStatus === 'unhealthy' || redisStatus === 'unhealthy')
-          ? 'unhealthy'
-          : 'degraded';
-
-    const healthCheck = {
-      status: overallStatus,
-      timestamp: new Date().toISOString(),
-      version: '1.0.0', // This would come from package.json in a real implementation
-      uptime: process.uptime(),
-      checks: {
-        database: {
-          status: databaseStatus,
-          message: databaseMessage || 'Database connection OK',
-          responseTime: databaseResponseTime
-        },
-        redis: {
-          status: redisStatus,
-          message: redisMessage || 'Redis connection OK',
-          responseTime: redisResponseTime
-        }
-      }
+    return {
+      status,
+      timestamp,
+      version,
+      uptime: Math.floor(process.uptime()),
+      checks,
     };
-
-    // Store health check result (optional)
-    await healthRepository.storeHealthCheck(healthCheck);
-
-    return healthCheck;
   }
 
-  // Get stored health check history
-  async getHealthCheckHistory(limit: number = 10) {
-    return healthRepository.getHealthCheckHistory(limit);
+  async getHealthCheckHistory(): Promise<HealthCheckResult[]> {
+    // No persistent storage yet — return empty array so the endpoint is wired.
+    return [];
   }
 
-  // Get latest stored health check
-  async getLatestHealthCheck() {
-    return healthRepository.getLatestHealthCheck();
+  async getLatestHealthCheck(): Promise<HealthCheckResult | null> {
+    // No persistent storage yet — return null.
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  private async checkDatabase(): Promise<{ status: 'healthy' | 'unhealthy'; message?: string; responseTime?: number }> {
+    const start = Date.now();
+    try {
+      const { prisma } = await import('../../lib/prisma');
+      await prisma.$queryRaw`SELECT 1`;
+      return { status: 'healthy', message: 'Database connection OK', responseTime: Date.now() - start };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Database health check failed', error);
+      return { status: 'unhealthy', message, responseTime: Date.now() - start };
+    }
+  }
+
+  private async checkRedis(): Promise<{ status: 'healthy' | 'unhealthy'; message?: string; responseTime?: number }> {
+    const start = Date.now();
+    try {
+      const pong = await redis.ping();
+      if (pong !== 'PONG') {
+        throw new Error(`Unexpected PING response: ${pong}`);
+      }
+      return { status: 'healthy', message: 'Redis connection OK', responseTime: Date.now() - start };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Redis health check failed', error);
+      return { status: 'unhealthy', message, responseTime: Date.now() - start };
+    }
   }
 }
 
-// Export singleton instance
 export const healthService = new HealthService();

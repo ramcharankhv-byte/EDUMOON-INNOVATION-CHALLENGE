@@ -1,319 +1,213 @@
 import { Request, Response, NextFunction } from 'express';
-import { createJobSchema, updateJobSchema } from '../validators/job.validator';
-import { jobService } from './services/job.service';
-import { logger } from '../../utils/logger';
-import { authenticate } from '../../middleware/auth.middleware';
-import { authorize } from '../../middleware/authorization.middleware';
+import { Role } from '@prisma/client';
+import { businessRepository } from '../../business/repositories/business.repository';
+import { createJobSchema, updateJobSchema, failJobSchema } from '../validators/job.validator';
+import { jobService } from '../services/job.service';
+import logger from '../../utils/logger';
 
-// Job controller
 export class JobController {
-  async create(...args: any[]) { return null as any; }
-  async getById(...args: any[]) { return null as any; }
-  async getByBusinessId(...args: any[]) { return null as any; }
-  async getByType(...args: any[]) { return null as any; }
-  async getByStatus(...args: any[]) { return null as any; }
-  async getPending(...args: any[]) { return null as any; }
-  async update(...args: any[]) { return null as any; }
-  async delete(...args: any[]) { return null as any; }
-  async start(...args: any[]) { return null as any; }
-  async complete(...args: any[]) { return null as any; }
-  async fail(...args: any[]) { return null as any; }
-  async getCount(...args: any[]) { return null as any; }
-  async getCountByBusinessId(...args: any[]) { return null as any; }
-  async getCountByType(...args: any[]) { return null as any; }
-  async getCountByStatus(...args: any[]) { return null as any; }
-
-  // Create job
+  // POST /api/jobs
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      // Validate input
-      const validatedData = createJobSchema.parse(req.body);
-
-      // Get user ID from authenticated request
       const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
+      const body = createJobSchema.parse(req.body);
 
-      // Create job
-      const job = await jobService.createJob({
-        ...validatedData,
-        businessId: req.context.business?.id // Associate with user's business if available
-      });
+      // Default businessId to the caller's business unless they are admin.
+      let businessId = body.businessId;
+      if (!businessId) {
+        const business = await businessRepository.findByUserId(userId);
+        businessId = business?.id;
+      }
 
-      return res.status(201).json({
-        message: 'Job created successfully',
-        job
-      });
+      const job = await jobService.createJob({ ...body, businessId });
+      return res.status(201).json({ message: 'Job created successfully', job });
     } catch (error) {
-      next(error);
+      logger.error('Create job failed', error);
+      return next(error);
     }
   }
 
-  // Get job by ID
+  // GET /api/jobs/:id
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-
-      // Get job
       const job = await jobService.getJobById(id);
-
-      // Optional: Check if user owns the job's business
-      // const userId = req.user?.id;
-      // if (userId && job.businessId) {
-      //   const business = await req.context.businessRepository.findByUserId(userId);
-      //   if (!business || job.businessId !== business.id) {
-      //     return res.status(403).json({ error: 'Forbidden' });
-      //   }
-      // }
-
-      return res.status(200).json({
-        job
-      });
+      return res.status(200).json({ job });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get jobs by business ID
+  // GET /api/jobs/business — list jobs for the auth'd user's business
   async getByBusinessId(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
+      const business = await businessRepository.findByUserId(userId);
       if (!business) {
         return res.status(404).json({ error: 'Business not found' });
       }
-
-      // Get jobs
       const jobs = await jobService.getJobsByBusinessId(business.id);
-
-      return res.status(200).json({
-        jobs
-      });
+      return res.status(200).json({ jobs });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get jobs by type
+  // GET /api/jobs/type/:type
   async getByType(req: Request, res: Response, next: NextFunction) {
     try {
       const { type } = req.params;
-
-      // Get jobs
       const jobs = await jobService.getJobsByType(type);
-
-      return res.status(200).json({
-        jobs
-      });
+      return res.status(200).json({ jobs });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get jobs by status
+  // GET /api/jobs/status/:status
   async getByStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const { status } = req.params;
-
-      // Get jobs
-      const jobs = await jobService.getJobsByStatus(status);
-
-      return res.status(200).json({
-        jobs
-      });
+      const jobs = await jobService.getJobsByStatus(status as never);
+      return res.status(200).json({ jobs });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get pending jobs
+  // GET /api/jobs/pending?limit=10
   async getPending(req: Request, res: Response, next: NextFunction) {
     try {
-      const { limit = 10 } = req.query;
-
-      // Get pending jobs
-      const jobs = await jobService.getPendingJobs(parseInt(limit as string));
-
-      return res.status(200).json({
-        jobs
-      });
+      const limitRaw = Number(req.query.limit ?? 10);
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : 10;
+      const jobs = await jobService.getPendingJobs(limit);
+      return res.status(200).json({ jobs });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Update job
+  // PUT /api/jobs/:id
   async update(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-
-      // Validate input
-      const validatedData = updateJobSchema.parse(req.body);
-
-      // Update job
-      const job = await jobService.updateJob(id, validatedData);
-
-      return res.status(200).json({
-        message: 'Job updated successfully',
-        job
-      });
+      const body = updateJobSchema.parse(req.body);
+      const job = await jobService.updateJob(id, body);
+      return res.status(200).json({ message: 'Job updated successfully', job });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Delete job
+  // DELETE /api/jobs/:id
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-
-      // Delete job
       await jobService.deleteJob(id);
-
-      return res.status(200).json({
-        message: 'Job deleted successfully'
-      });
+      return res.status(200).json({ message: 'Job deleted successfully' });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Start job
+  // POST /api/jobs/:id/start
   async start(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-
-      // Start job
       const job = await jobService.startJob(id);
-
-      return res.status(200).json({
-        message: 'Job started successfully',
-        job
-      });
+      return res.status(200).json({ message: 'Job started successfully', job });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Complete job
+  // POST /api/jobs/:id/complete
   async complete(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-
-      // Complete job
       const job = await jobService.completeJob(id);
-
-      return res.status(200).json({
-        message: 'Job completed successfully',
-        job
-      });
+      return res.status(200).json({ message: 'Job completed successfully', job });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Fail job
+  // POST /api/jobs/:id/fail
   async fail(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { errorMessage } = req.body;
-
-      // Fail job
-      const job = await jobService.failJob(id, errorMessage);
-
-      return res.status(200).json({
-        message: 'Job marked as failed',
-        job
-      });
+      const body = failJobSchema.parse(req.body);
+      const job = await jobService.failJob(id, body.errorMessage);
+      return res.status(200).json({ message: 'Job marked as failed', job });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get job count
-  async getCount(req: Request, res: Response, next: NextFunction) {
+  // GET /api/jobs/count — admin
+  async getCount(_req: Request, res: Response, next: NextFunction) {
     try {
-      const userRole = req.user?.role;
-
-      // Only admin can get job count
-      if (userRole !== 'ADMIN') {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
-      // Get job count
       const count = await jobService.getJobCount();
-
-      return res.status(200).json({
-        count
-      });
+      return res.status(200).json({ count });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get job count by business ID
+  // GET /api/jobs/business/count
   async getCountByBusinessId(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
+      const business = await businessRepository.findByUserId(userId);
       if (!business) {
         return res.status(404).json({ error: 'Business not found' });
       }
-
-      // Get job count
       const count = await jobService.getJobCountByBusinessId(business.id);
-
-      return res.status(200).json({
-        count
-      });
+      return res.status(200).json({ count });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get job count by type
+  // GET /api/jobs/type/:type/count
   async getCountByType(req: Request, res: Response, next: NextFunction) {
     try {
       const { type } = req.params;
-
-      // Get job count
       const count = await jobService.getJobCountByType(type);
-
-      return res.status(200).json({
-        count
-      });
+      return res.status(200).json({ count });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get job count by status
+  // GET /api/jobs/status/:status/count
   async getCountByStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const { status } = req.params;
-
-      // Get job count
-      const count = await jobService.getJobCountByStatus(status);
-
-      return res.status(200).json({
-        count
-      });
+      const count = await jobService.getJobCountByStatus(status as never);
+      return res.status(200).json({ count });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 }
 
-// Export singleton instance
+// Helper guard so unauthorized callers can't access admin-only endpoints.
+export function assertAdmin(role: Role | undefined): void {
+  if (role !== Role.ADMIN) {
+    const err = new Error('Forbidden');
+    (err as Error & { status?: number }).status = 403;
+    throw err;
+  }
+}
+
 export const jobController = new JobController();

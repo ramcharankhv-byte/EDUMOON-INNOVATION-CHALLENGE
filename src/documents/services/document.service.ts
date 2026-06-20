@@ -1,92 +1,72 @@
-import { documentRepository } from './repositories/document.repository';
-import { businessRepository } from '../business/repositories/business.repository';
-import { logger } from '../../utils/logger';
-import { DocumentEvent } from './events/document.event';
-import { documentListener } from './listeners/document.listener';
-import multer from 'multer';
 import path from 'path';
-import { config } from '../../config';
 import fs from 'fs';
+import multer from 'multer';
 import axios from 'axios';
 import FormData from 'form-data';
+import { documentRepository, extensionToDocumentType } from '../repositories/document.repository';
+import { businessRepository } from '../../business/repositories/business.repository';
+import logger from '../../utils/logger';
+import { config } from '../../config';
+import { Document, DocumentType } from '@prisma/client';
+import { DocumentUploadedEvent } from '../events/document.event';
+import { documentListener } from '../listeners/document.listener';
 
-// Configure multer for file uploads
+// ---------------------------------------------------------------------------
+// Multer configuration
+// ---------------------------------------------------------------------------
+const UPLOAD_DIR = config.uploadDir || './uploads';
+const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.txt'] as const;
+
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = config.uploadDir || './uploads';
-    // Ensure upload directory exists
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+  destination: (_req, _file, cb) => {
+    if (!fs.existsSync(UPLOAD_DIR)) {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
     }
-    cb(null, uploadDir);
+    cb(null, UPLOAD_DIR);
   },
-  filename: (req, file, cb) => {
-    // Generate unique filename
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     const ext = path.extname(file.originalname);
-    const filename = path.basename(file.originalname, ext) + '-' + uniqueSuffix + ext;
-    cb(null, filename);
-  }
+    const base = path.basename(file.originalname, ext);
+    cb(null, `${base}-${uniqueSuffix}${ext}`);
+  },
 });
 
-// File filter
-const fileFilter = (req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  // Allow specific file types
-  const allowedTypes = ['.pdf', '.docx', '.txt'];
+function fileFilter(
+  _req: Express.Request,
+  file: Express.Multer.File,
+  cb: multer.FileFilterCallback,
+): void {
   const ext = path.extname(file.originalname).toLowerCase();
-
-  if (allowedTypes.includes(ext)) {
+  if ((ALLOWED_EXTENSIONS as readonly string[]).includes(ext)) {
     cb(null, true);
   } else {
     cb(new Error('Invalid file type. Only PDF, DOCX, and TXT files are allowed.'));
   }
-};
+}
 
-// Multer instance
 export const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
-  }
+  storage,
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
+// ---------------------------------------------------------------------------
 // Document service
+// ---------------------------------------------------------------------------
 export class DocumentService {
-  async uploadDocument(...args: any[]) { return null as any; }
-  async getDocumentById(...args: any[]) { return null as any; }
-  async getDocumentsByBusinessId(...args: any[]) { return null as any; }
-  async updateDocument(...args: any[]) { return null as any; }
-  async deleteDocument(...args: any[]) { return null as any; }
-  async markAsProcessed(...args: any[]) { return null as any; }
-  async getDocumentCount(...args: any[]) { return null as any; }
-
-  // Upload document
-  async uploadDocument(businessId: string, file: Express.Multer.File, description?: string) {
-    // Verify business exists
+  async uploadDocument(
+    businessId: string,
+    file: Express.Multer.File,
+    description?: string,
+  ): Promise<Document> {
     const business = await businessRepository.findById(businessId);
     if (!business) {
       throw new Error('Business not found');
     }
 
-    // Determine document type from file extension
-    const ext = path.extname(file.originalname).toLowerCase();
-    let type: string;
-    switch (ext) {
-      case '.pdf':
-        type = 'PDF';
-        break;
-      case '.docx':
-        type = 'DOCX';
-        break;
-      case '.txt':
-        type = 'TXT';
-        break;
-      default:
-        throw new Error('Unsupported file type');
-    }
+    const type = extensionToDocumentType(path.extname(file.originalname));
 
-    // Create document record
     const document = await documentRepository.createDocument({
       businessId,
       filename: file.filename,
@@ -94,51 +74,51 @@ export class DocumentService {
       mimeType: file.mimetype,
       size: file.size,
       type,
-      url: `/uploads/${file.filename}`, // Relative URL for serving
-      description
+      url: `/uploads/${file.filename}`,
+      description,
     });
 
-    // Emit document uploaded event
-    const documentUploadedEvent = new DocumentEvent.DocumentUploadedEvent(
+    const event = new DocumentUploadedEvent(
       document.id,
       businessId,
       file.originalname,
       file.size,
-      type
+      type,
     );
+    await documentListener.onDocumentUploaded(event);
 
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await documentListener.onDocumentUploaded(documentUploadedEvent);
-
-    // AI SERVICE PROXY LOGIC
-    try {
-      const aiServiceUrl = process.env.EXTERNAL_DOCUMENT_SERVICE_URL || 'http://localhost:8000';
-      const fileStream = fs.createReadStream(file.path);
-      
-      const formData = new FormData();
-      formData.append('file', fileStream);
-      formData.append('document_id', document.id);
-      formData.append('business_id', businessId);
-      
-      // Forward to FastAPI for processing, chunking, and embedding
-      await axios.post(`${aiServiceUrl}/process-document`, formData, {
-        headers: {
-          ...formData.getHeaders()
-        }
-      });
-      
-      // Mark as processed in local DB
-      await this.markAsProcessed(document.id);
-    } catch (err) {
+    // Forward to the AI service for chunking/embedding. We don't await this
+    // before returning — uploads should be fast. Errors are logged but
+    // surface as a 'pending' document; the listener above can also retry.
+    void this.proxyToAiService(document.id, businessId, file).catch((err) => {
       logger.error('Failed to communicate with AI Service for document processing', err);
-    }
+    });
 
     return document;
   }
 
-  // Get document by ID
-  async getDocumentById(id: string) {
+  private async proxyToAiService(
+    documentId: string,
+    businessId: string,
+    file: Express.Multer.File,
+  ): Promise<void> {
+    const aiServiceUrl = process.env.EXTERNAL_DOCUMENT_SERVICE_URL || 'http://localhost:8000';
+    const fileStream = fs.createReadStream(file.path);
+
+    const formData = new FormData();
+    formData.append('file', fileStream);
+    formData.append('document_id', documentId);
+    formData.append('business_id', businessId);
+
+    await axios.post(`${aiServiceUrl}/process-document`, formData, {
+      headers: formData.getHeaders(),
+      timeout: 30_000,
+    });
+
+    await this.markAsProcessed(documentId);
+  }
+
+  async getDocumentById(id: string): Promise<Document> {
     const document = await documentRepository.findById(id);
     if (!document) {
       throw new Error('Document not found');
@@ -146,64 +126,57 @@ export class DocumentService {
     return document;
   }
 
-  // Get documents by business ID
-  async getDocumentsByBusinessId(businessId: string) {
-    // Verify business exists
+  async getDocumentsByBusinessId(businessId: string): Promise<Document[]> {
     const business = await businessRepository.findById(businessId);
     if (!business) {
       throw new Error('Business not found');
     }
-
     return documentRepository.findByBusinessId(businessId);
   }
 
-  // Update document
-  async updateDocument(id: string, data: {
-    description?: string;
-    isProcessed?: boolean;
-  }) {
-    // Check if document exists
+  async updateDocument(
+    id: string,
+    data: { description?: string; isProcessed?: boolean },
+  ): Promise<Document> {
     const existing = await documentRepository.findById(id);
     if (!existing) {
       throw new Error('Document not found');
     }
-
-    return documentRepository.updateDocument(id, data);
+    return documentRepository.updateDocument(id, {
+      description: data.description ?? null,
+      isProcessed: data.isProcessed,
+    });
   }
 
-  // Delete document
-  async deleteDocument(id: string) {
-    // Check if document exists
+  async deleteDocument(id: string): Promise<Document> {
     const existing = await documentRepository.findById(id);
     if (!existing) {
       throw new Error('Document not found');
     }
-
     return documentRepository.deleteDocument(id);
   }
 
-  // Mark document as processed
-  async markAsProcessed(id: string, extractedText?: string, chunkCount?: number) {
-    // Check if document exists
+  async markAsProcessed(
+    id: string,
+    extractedText?: string,
+    chunkCount?: number,
+  ): Promise<Document> {
     const existing = await documentRepository.findById(id);
     if (!existing) {
       throw new Error('Document not found');
     }
-
     return documentRepository.markAsProcessed(id, extractedText, chunkCount);
   }
 
-  // Get document count for business
-  async getDocumentCount(businessId: string) {
-    // Verify business exists
+  async getDocumentCount(businessId: string): Promise<number> {
     const business = await businessRepository.findById(businessId);
     if (!business) {
       throw new Error('Business not found');
     }
-
     return documentRepository.countByBusinessId(businessId);
   }
 }
 
-// Export singleton instance
 export const documentService = new DocumentService();
+
+export type { Document, DocumentType };

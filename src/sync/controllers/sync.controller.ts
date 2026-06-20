@@ -1,292 +1,184 @@
 import { Request, Response, NextFunction } from 'express';
+import { businessRepository } from '../../business/repositories/business.repository';
 import { createSyncJobSchema, updateSyncJobSchema } from '../validators/sync.validator';
-import { syncService } from './services/sync.service';
-import { logger } from '../../utils/logger';
-import { authenticate } from '../../middleware/auth.middleware';
+import { syncService } from '../services/sync.service';
 
-// Sync controller
+async function resolveBusiness(req: Request): Promise<string | { error: string; status: number }> {
+  const userId = req.user?.id;
+  if (!userId) return { error: 'Unauthorized', status: 401 };
+  const business = await businessRepository.findByUserId(userId);
+  if (!business) return { error: 'Business not found', status: 404 };
+  return business.id;
+}
+
 export class SyncController {
-  // Create sync job
+  // POST /api/sync
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      // Validate input
-      const validatedData = createSyncJobSchema.parse(req.body);
-
-      // Get user ID from authenticated request
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Create sync job
-      const syncJob = await syncService.createSyncJob(business.id, validatedData);
-
-      return res.status(201).json({
-        message: 'Sync job created successfully',
-        syncJob
-      });
+      const body = createSyncJobSchema.parse(req.body);
+      const syncJob = await syncService.createSyncJob(resolved, body);
+      return res.status(201).json({ message: 'Sync job created successfully', syncJob });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get sync job by ID
+  // GET /api/sync/:id
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-
-      // Get sync job
       const syncJob = await syncService.getSyncJobById(id);
-
-      // Optional: Check if user owns the sync job's business
-      // const userId = req.user?.id;
-      // if (userId) {
-      //   const business = await req.context.businessRepository.findByUserId(userId);
-      //   if (!business || syncJob.businessId !== business.id) {
-      //     return res.status(403).json({ error: 'Forbidden' });
-      //   }
-      // }
-
-      return res.status(200).json({
-        syncJob
-      });
+      return res.status(200).json({ syncJob });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get sync jobs by business ID
+  // GET /api/sync
   async getByBusinessId(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Get sync jobs
-      const syncJobs = await syncService.getSyncJobsByBusinessId(business.id);
-
-      return res.status(200).json({
-        syncJobs
-      });
+      const syncJobs = await syncService.getSyncJobsByBusinessId(resolved);
+      return res.status(200).json({ syncJobs });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get sync jobs by business ID and status
+  // GET /api/sync/status/:status
   async getByBusinessIdAndStatus(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
       const { status } = req.params;
-
-      // Get sync jobs
-      const syncJobs = await syncService.getSyncJobsByBusinessIdAndStatus(business.id, status);
-
-      return res.status(200).json({
-        syncJobs
-      });
+      const syncJobs = await syncService.getSyncJobsByBusinessIdAndStatus(resolved, status);
+      return res.status(200).json({ syncJobs });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get latest sync job by business ID and type
+  // GET /api/sync/type/:type/latest
   async getLatestByBusinessIdAndType(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
       const { type } = req.params;
-
-      // Get latest sync job
-      const syncJob = await syncService.getLatestSyncJobByBusinessIdAndType(business.id, type);
-
-      if (!syncJob) {
-        return res.status(404).json({ error: 'No sync job found for this type' });
-      }
-
-      return res.status(200).json({
-        syncJob
-      });
+      const syncJob = await syncService.getLatestSyncJobByBusinessIdAndType(resolved, type);
+      if (!syncJob) return res.status(404).json({ error: 'No sync job found for this type' });
+      return res.status(200).json({ syncJob });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Update sync job
+  // PUT /api/sync/:id
   async update(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-
-      // Validate input
-      const validatedData = updateSyncJobSchema.parse(req.body);
-
-      // Update sync job
-      const syncJob = await syncService.updateSyncJob(id, validatedData);
-
-      return res.status(200).json({
-        message: 'Sync job updated successfully',
-        syncJob
+      const body = updateSyncJobSchema.parse(req.body);
+      const syncJob = await syncService.updateSyncJob(id, {
+        status: body.status,
+        errorMessage: body.errorMessage ?? undefined,
+        pagesProcessed: body.pagesProcessed,
+        documentsProcessed: body.documentsProcessed,
       });
+      return res.status(200).json({ message: 'Sync job updated successfully', syncJob });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Delete sync job
+  // DELETE /api/sync/:id
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-
-      // Delete sync job
       await syncService.deleteSyncJob(id);
-
-      return res.status(200).json({
-        message: 'Sync job deleted successfully'
-      });
+      return res.status(200).json({ message: 'Sync job deleted successfully' });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Start website sync
+  // POST /api/sync/website
   async startWebsiteSync(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Start website sync
-      const result = await syncService.startWebsiteSync(business.id);
-
+      const result = await syncService.startWebsiteSync(resolved);
       return res.status(200).json({
         message: 'Website sync completed successfully',
         syncJob: result.syncJob,
-        websiteResult: result.result
+        websiteResult: result.result,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Start document sync
+  // POST /api/sync/document
   async startDocumentSync(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Start document sync
-      const result = await syncService.startDocumentSync(business.id);
-
+      const result = await syncService.startDocumentSync(resolved);
       return res.status(200).json({
         message: 'Document sync completed successfully',
         syncJob: result.syncJob,
-        processedCount: result.processedCount
+        processedCount: result.processedCount,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Start knowledge base sync
+  // POST /api/sync/knowledge-base
   async startKnowledgeBaseSync(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Start knowledge base sync
-      const result = await syncService.startKnowledgeBaseSync(business.id);
-
+      const result = await syncService.startKnowledgeBaseSync(resolved);
       return res.status(200).json({
         message: 'Knowledge base sync completed successfully',
         syncJob: result.syncJob,
         pageCountChange: result.pageCountChange,
-        documentCountChange: result.documentCountChange
+        documentCountChange: result.documentCountChange,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get sync job count for business
+  // GET /api/sync/count
   async getCount(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Get sync job count
-      const count = await syncService.getSyncJobCount(business.id);
-
-      return res.status(200).json({
-        count
-      });
+      const count = await syncService.getSyncJobCount(resolved);
+      return res.status(200).json({ count });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 }
 
-// Export singleton instance
 export const syncController = new SyncController();

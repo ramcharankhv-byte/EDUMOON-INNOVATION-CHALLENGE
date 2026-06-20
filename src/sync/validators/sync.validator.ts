@@ -1,21 +1,20 @@
 import { z } from 'zod';
 
-// Sync job creation schema
+export const SYNC_TYPES = ['website', 'document', 'knowledge_base'] as const;
+export const SYNC_STATUSES = ['pending', 'in_progress', 'completed', 'failed'] as const;
+
 export const createSyncJobSchema = z.object({
-  type: z.enum(['website', 'document', 'knowledge_base']).default('website'),
-  // Additional parameters can be added here based on sync type
+  type: z.enum(SYNC_TYPES).default('website'),
 });
 
-// Sync job update schema
 export const updateSyncJobSchema = z.object({
-  status: z.enum(['pending', 'in_progress', 'completed', 'failed']).optional(),
-  errorMessage: z.string().optional(),
+  status: z.enum(SYNC_STATUSES).optional(),
+  errorMessage: z.string().max(2000).nullable().optional(),
   pagesProcessed: z.number().int().nonnegative().optional(),
-  documentsProcessed: z.number().int().nonnegative().optional()
+  documentsProcessed: z.number().int().nonnegative().optional(),
 });
 
-// Export schemas
 export const syncValidators = {
   create: createSyncJobSchema,
-  update: updateSyncJobSchema
+  update: updateSyncJobSchema,
 };

@@ -1,90 +1,68 @@
-import { logger } from '../../utils/logger';
-import { prisma } from '../../lib/prisma';
-import { WebsiteUpdatedEvent } from './website.event';
-import { WebsiteDeletedEvent } from './website.event';
-import { WebsiteCrawlStartedEvent } from './website.event';
-import { WebsiteCrawlCompletedEvent } from './website.event';
-import { WebsiteCrawlFailedEvent } from './website.event';
+import logger from '../../utils/logger';
+import {
+  WebsiteCrawlCompletedEvent,
+  WebsiteCrawlFailedEvent,
+  WebsiteCrawlStartedEvent,
+  WebsiteDeletedEvent,
+  WebsiteUpdatedEvent,
+} from '../events/website.event';
 
-// Website listeners for handling side effects
 export class WebsiteListener {
-  async onWebsiteUpdated(...args: any[]) { return null as any; }
-  async onWebsiteDeleted(...args: any[]) { return null as any; }
-  async onWebsiteCrawlStarted(...args: any[]) { return null as any; }
-  async onWebsiteCrawlCompleted(...args: any[]) { return null as any; }
-  async onWebsiteCrawlFailed(...args: any[]) { return null as any; }
-
-  // Handle website updated event
-  async onWebsiteUpdated(event: WebsiteUpdatedEvent) {
+  async onWebsiteUpdated(event: WebsiteUpdatedEvent): Promise<void> {
     try {
-      logger.info(`Website updated: ${event.websiteId} for business ${event.businessId}`);
-
-      // TODO: Clear relevant caches
-      // TODO: Trigger knowledge base update if needed
-      // TODO: Notify user
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onWebsiteUpdated listener:', error);
+      logger.info(
+        { websiteId: event.websiteId, businessId: event.businessId },
+        'Website updated',
+      );
+    } catch (err) {
+      logger.error('Error in onWebsiteUpdated listener', err);
     }
   }
 
-  // Handle website deleted event
-  async onWebsiteDeleted(event: WebsiteDeletedEvent) {
+  async onWebsiteDeleted(event: WebsiteDeletedEvent): Promise<void> {
     try {
-      logger.info(`Website deleted: ${event.websiteId} for business ${event.businessId}`);
-
-      // TODO: Delete associated pages
-      // TODO: Clear knowledge base
-      // TODO: Notify user
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onWebsiteDeleted listener:', error);
+      logger.info({ websiteId: event.websiteId }, 'Website deleted');
+    } catch (err) {
+      logger.error('Error in onWebsiteDeleted listener', err);
     }
   }
 
-  // Handle website crawl started event
-  async onWebsiteCrawlStarted(event: WebsiteCrawlStartedEvent) {
+  async onWebsiteCrawlStarted(event: WebsiteCrawlStartedEvent): Promise<void> {
     try {
-      logger.info(`Website crawl started: ${event.websiteId} for business ${event.businessId}`);
-
-      // TODO: Notify user that crawl has started
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onWebsiteCrawlStarted listener:', error);
+      logger.info(
+        { websiteId: event.websiteId, businessId: event.businessId },
+        'Website crawl started',
+      );
+    } catch (err) {
+      logger.error('Error in onWebsiteCrawlStarted listener', err);
     }
   }
 
-  // Handle website crawl completed event
-  async onWebsiteCrawlCompleted(event: WebsiteCrawlCompletedEvent) {
+  async onWebsiteCrawlCompleted(event: WebsiteCrawlCompletedEvent): Promise<void> {
     try {
-      logger.info(`Website crawl completed: ${event.websiteId} for business ${event.businessId} (${event.pagesCrawled} pages)`);
-
-      // TODO: Trigger knowledge base update
-      // TODO: Notify user that crawl is complete
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onWebsiteCrawlCompleted listener:', error);
+      logger.info(
+        {
+          websiteId: event.websiteId,
+          businessId: event.businessId,
+          pagesCrawled: event.pagesCrawled,
+        },
+        'Website crawl completed',
+      );
+    } catch (err) {
+      logger.error('Error in onWebsiteCrawlCompleted listener', err);
     }
   }
 
-  // Handle website crawl failed event
-  async onWebsiteCrawlFailed(event: WebsiteCrawlFailedEvent) {
+  async onWebsiteCrawlFailed(event: WebsiteCrawlFailedEvent): Promise<void> {
     try {
-      logger.info(`Website crawl failed: ${event.websiteId} for business ${event.businessId} (${event.error})`);
-
-      // TODO: Notify user that crawl failed
-      // TODO: Update analytics
-      // TODO: Retry mechanism if applicable
-
-    } catch (error) {
-      logger.error('Error in onWebsiteCrawlFailed listener:', error);
+      logger.info(
+        { websiteId: event.websiteId, error: event.error },
+        'Website crawl failed',
+      );
+    } catch (err) {
+      logger.error('Error in onWebsiteCrawlFailed listener', err);
     }
   }
 }
 
-// Export singleton instance
 export const websiteListener = new WebsiteListener();

@@ -1,95 +1,67 @@
-import { logger } from '../../utils/logger';
-import { prisma } from '../../lib/prisma';
-import { NotificationCreatedEvent } from './notification.event';
-import { NotificationUpdatedEvent } from './notification.event';
-import { NotificationDeletedEvent } from './notification.event';
-import { NotificationMarkedAsReadEvent } from './notification.event';
-import { NotificationMarkedAsUnreadEvent } from './notification.event';
-import { NotificationAllMarkedAsReadEvent } from './notification.event';
+import logger from '../../utils/logger';
+import {
+  NotificationAllMarkedAsReadEvent,
+  NotificationCreatedEvent,
+  NotificationDeletedEvent,
+  NotificationMarkedAsReadEvent,
+  NotificationMarkedAsUnreadEvent,
+  NotificationUpdatedEvent,
+} from '../events/notification.event';
 
-// Notification listeners for handling side effects
 export class NotificationListener {
-  async onNotificationCreated(...args: any[]) { return null as any; }
-
-  // Handle notification created event
-  async onNotificationCreated(event: NotificationCreatedEvent) {
+  async onNotificationCreated(event: NotificationCreatedEvent): Promise<void> {
     try {
-      logger.info(`Notification created: ${event.notificationId} for business ${event.businessId} (${event.type})`);
-
-      // TODO: Send real-time notification via WebSocket if connected
-      // TODO: Send email notification if configured
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onNotificationCreated listener:', error);
+      logger.info(
+        { notificationId: event.notificationId, businessId: event.businessId, type: event.type },
+        'Notification created',
+      );
+    } catch (err) {
+      logger.error('Error in onNotificationCreated listener', err);
     }
   }
 
-  // Handle notification updated event
-  async onNotificationUpdated(event: NotificationUpdatedEvent) {
+  async onNotificationUpdated(event: NotificationUpdatedEvent): Promise<void> {
     try {
-      logger.info(`Notification updated: ${event.notificationId}`);
-
-      // TODO: Send real-time notification via WebSocket if connected
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onNotificationUpdated listener:', error);
+      logger.info({ notificationId: event.notificationId }, 'Notification updated');
+    } catch (err) {
+      logger.error('Error in onNotificationUpdated listener', err);
     }
   }
 
-  // Handle notification deleted event
-  async onNotificationDeleted(event: NotificationDeletedEvent) {
+  async onNotificationDeleted(event: NotificationDeletedEvent): Promise<void> {
     try {
-      logger.info(`Notification deleted: ${event.notificationId}`);
-
-      // TODO: Clean up associated data
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onNotificationDeleted listener:', error);
+      logger.info({ notificationId: event.notificationId }, 'Notification deleted');
+    } catch (err) {
+      logger.error('Error in onNotificationDeleted listener', err);
     }
   }
 
-  // Handle notification marked as read event
-  async onNotificationMarkedAsRead(event: NotificationMarkedAsReadEvent) {
+  async onNotificationMarkedAsRead(event: NotificationMarkedAsReadEvent): Promise<void> {
     try {
-      logger.info(`Notification marked as read: ${event.notificationId}`);
-
-      // TODO: Send real-time notification via WebSocket if connected
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onNotificationMarkedAsRead listener:', error);
+      logger.info({ notificationId: event.notificationId }, 'Notification marked as read');
+    } catch (err) {
+      logger.error('Error in onNotificationMarkedAsRead listener', err);
     }
   }
 
-  // Handle notification marked as unread event
-  async onNotificationMarkedAsUnread(event: NotificationMarkedAsUnreadEvent) {
+  async onNotificationMarkedAsUnread(event: NotificationMarkedAsUnreadEvent): Promise<void> {
     try {
-      logger.info(`Notification marked as unread: ${event.notificationId}`);
-
-      // TODO: Send real-time notification via WebSocket if connected
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onNotificationMarkedAsUnread listener:', error);
+      logger.info({ notificationId: event.notificationId }, 'Notification marked as unread');
+    } catch (err) {
+      logger.error('Error in onNotificationMarkedAsUnread listener', err);
     }
   }
 
-  // Handle all notifications marked as read event
-  async onNotificationAllMarkedAsRead(event: NotificationAllMarkedAsReadEvent) {
+  async onNotificationAllMarkedAsRead(event: NotificationAllMarkedAsReadEvent): Promise<void> {
     try {
-      logger.info(`All notifications marked as read for business ${event.businessId} (${event.count} notifications)`);
-
-      // TODO: Send real-time notification via WebSocket if connected
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onNotificationAllMarkedAsRead listener:', error);
+      logger.info(
+        { businessId: event.businessId, count: event.count },
+        'All notifications marked as read',
+      );
+    } catch (err) {
+      logger.error('Error in onNotificationAllMarkedAsRead listener', err);
     }
   }
 }
 
-// Export singleton instance
 export const notificationListener = new NotificationListener();

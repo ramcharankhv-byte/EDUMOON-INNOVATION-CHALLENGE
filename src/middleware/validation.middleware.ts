@@ -1,61 +1,33 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodSchema } from 'zod';
-import { logger } from '../utils/logger';
+import logger from '../utils/logger';
+
+type Source = 'body' | 'params' | 'query';
 
 /**
- * Middleware to validate request body against a Zod schema
- * @param schema - Zod schema to validate against
+ * Validate `req[source]` against a Zod schema. On failure, forwards
+ * the ZodError to the global error handler so it's rendered as a 400.
  */
-export const validateRequest = (schema: ZodSchema) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+function makeValidator(schema: ZodSchema, source: Source) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
     try {
-      schema.parse(req.body);
+      schema.parse(req[source]);
       next();
-    } catch (error) {
-      logger.warn('Validation error', {
-        error: error.errors,
-        body: req.body,
-        url: req.originalUrl,
-        method: req.method
-      });
-      // Re-throw to be handled by error handler
-      next(error);
+    } catch (err) {
+      logger.warn(
+        {
+          source,
+          url: req.originalUrl,
+          method: req.method,
+          issues: err instanceof Error ? (err as { errors?: unknown }).errors : undefined,
+        },
+        'Validation error',
+      );
+      next(err);
     }
   };
-};
+}
 
-// Optional: Parameter validation middleware
-export const validateParams = (schema: ZodSchema) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    try {
-      schema.parse(req.params);
-      next();
-    } catch (error) {
-      logger.warn('Parameter validation error', {
-        error: error.errors,
-        params: req.params,
-        url: req.originalUrl,
-        method: req.method
-      });
-      next(error);
-    }
-  };
-};
-
-// Optional: Query validation middleware
-export const validateQuery = (schema: ZodSchema) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    try {
-      schema.parse(req.query);
-      next();
-    } catch (error) {
-      logger.warn('Query validation error', {
-        error: error.errors,
-        query: req.query,
-        url: req.originalUrl,
-        method: req.method
-      });
-      next(error);
-    }
-  };
-};
+export const validateRequest = (schema: ZodSchema) => makeValidator(schema, 'body');
+export const validateParams = (schema: ZodSchema) => makeValidator(schema, 'params');
+export const validateQuery = (schema: ZodSchema) => makeValidator(schema, 'query');

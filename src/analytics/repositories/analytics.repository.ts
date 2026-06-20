@@ -1,98 +1,88 @@
 import { prisma } from '../../lib/prisma';
-import { Analytics } from '@prisma/client';
+import { Analytic, MetricType, Prisma } from '@prisma/client';
 
-// Analytics repository
+// The Prisma client generates the model name in singular form ('Analytic')
+// but the repository / service / DB column stays 'analytics' to match the
+// existing API contract.
+
 export class AnalyticsRepository {
-  // Find analytics by ID
-  async findById(id: string): Promise<Analytics | null> {
-    return prisma.analytics.findUnique({
-      where: { id }
-    });
+  async findById(id: string): Promise<Analytic | null> {
+    return prisma.analytic.findUnique({ where: { id } });
   }
 
-  // Find analytics by business ID
-  async findByBusinessId(businessId: string): Promise<Analytics[]> {
-    return prisma.analytics.findMany({
+  async findByBusinessId(businessId: string): Promise<Analytic[]> {
+    return prisma.analytic.findMany({
       where: { businessId },
-      orderBy: { date: 'desc' }
+      orderBy: { date: 'desc' },
     });
   }
 
-  // Find analytics by business ID and metric type
-  async findByBusinessIdAndMetricType(businessId: string, metricType: string): Promise<Analytics[]> {
-    return prisma.analytics.findMany({
+  async findByBusinessIdAndMetricType(
+    businessId: string,
+    metricType: MetricType,
+  ): Promise<Analytic[]> {
+    return prisma.analytic.findMany({
       where: { businessId, metricType },
-      orderBy: { date: 'desc' }
+      orderBy: { date: 'desc' },
     });
   }
 
-  // Find latest analytics by business ID and metric type
-  async findLatestByBusinessIdAndMetricType(businessId: string, metricType: string): Promise<Analytics | null> {
-    return prisma.analytics.findFirst({
+  async findLatestByBusinessIdAndMetricType(
+    businessId: string,
+    metricType: MetricType,
+  ): Promise<Analytic | null> {
+    return prisma.analytic.findFirst({
       where: { businessId, metricType },
-      orderBy: { date: 'desc' }
+      orderBy: { date: 'desc' },
     });
   }
 
-  // Create analytics
   async createAnalytics(data: {
     businessId: string;
-    metricType: string;
+    metricType: MetricType;
     metricValue: number;
-    labels?: string;
+    labels?: Prisma.InputJsonValue;
     date?: Date;
-  }): Promise<Analytics> {
-    return prisma.analytics.create({
+  }): Promise<Analytic> {
+    return prisma.analytic.create({
       data: {
         businessId: data.businessId,
         metricType: data.metricType,
         metricValue: data.metricValue,
-        labels: data.labels,
-        date: data.date || new Date()
-      }
+        labels: data.labels ?? Prisma.JsonNull,
+        date: data.date ?? new Date(),
+      },
     });
   }
 
-  // Update analytics
-  async updateAnalytics(id: string, data: Partial<Omit<Analytics, 'id' | 'businessId' | 'createdAt'>>): Promise<Analytics> {
-    return prisma.analytics.update({
-      where: { id },
-      data
-    });
+  async updateAnalytics(
+    id: string,
+    data: Partial<{
+      metricType: MetricType;
+      metricValue: number;
+      labels: Prisma.InputJsonValue;
+      date: Date;
+    }>,
+  ): Promise<Analytic> {
+    return prisma.analytic.update({ where: { id }, data });
   }
 
-  // Delete analytics (soft delete)
-  async deleteAnalytics(id: string): Promise<Analytics> {
-    return prisma.analytics.update({
-      where: { id },
-      data: {  }
-    });
+  async deleteAnalytics(id: string): Promise<Analytic> {
+    return prisma.analytic.delete({ where: { id } });
   }
 
-  // Get analytics count for business
   async countByBusinessId(businessId: string): Promise<number> {
-    return prisma.analytics.count({
-      where: { businessId }
-    });
+    return prisma.analytic.count({ where: { businessId } });
   }
 
-  // Delete old analytics (for data retention)
   async deleteOldAnalytics(businessId: string, daysToKeep: number): Promise<number> {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
-
-    const result = await prisma.analytics.deleteMany({
-      where: {
-        businessId,
-        date: {
-          lt: cutoffDate
-        }
-      }
+    const result = await prisma.analytic.deleteMany({
+      where: { businessId, date: { lt: cutoffDate } },
     });
-
     return result.count;
   }
 }
 
-// Export singleton instance
 export const analyticsRepository = new AnalyticsRepository();

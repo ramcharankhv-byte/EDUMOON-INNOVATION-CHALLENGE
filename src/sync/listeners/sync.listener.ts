@@ -1,100 +1,78 @@
-import { logger } from '../../utils/logger';
-import { prisma } from '../../lib/prisma';
-import { SyncJobCreatedEvent } from './sync.event';
-import { SyncJobUpdatedEvent } from './sync.event';
-import { SyncJobDeletedEvent } from './sync.event';
-import { SyncJobStartedEvent } from './sync.event';
-import { SyncJobCompletedEvent } from './sync.event';
-import { SyncJobFailedEvent } from './sync.event';
+import logger from '../../utils/logger';
+import {
+  SyncJobCompletedEvent,
+  SyncJobCreatedEvent,
+  SyncJobDeletedEvent,
+  SyncJobFailedEvent,
+  SyncJobStartedEvent,
+  SyncJobUpdatedEvent,
+} from '../events/sync.event';
 
-// Sync listeners for handling side effects
 export class SyncListener {
-  async onSyncJobCreated(...args: any[]) { return null as any; }
-  async onSyncJobStarted(...args: any[]) { return null as any; }
-  async onSyncJobCompleted(...args: any[]) { return null as any; }
-  async onSyncJobFailed(...args: any[]) { return null as any; }
-
-  // Handle sync job created event
-  async onSyncJobCreated(event: SyncJobCreatedEvent) {
+  async onSyncJobCreated(event: SyncJobCreatedEvent): Promise<void> {
     try {
-      logger.info(`Sync job created: ${event.syncJobId} for business ${event.businessId} (${event.type})`);
-
-      // TODO: Send notification to user
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onSyncJobCreated listener:', error);
+      logger.info(
+        { syncJobId: event.syncJobId, businessId: event.businessId, type: event.type },
+        'Sync job created',
+      );
+    } catch (err) {
+      logger.error('Error in onSyncJobCreated listener', err);
     }
   }
 
-  // Handle sync job updated event
-  async onSyncJobUpdated(event: SyncJobUpdatedEvent) {
+  async onSyncJobUpdated(event: SyncJobUpdatedEvent): Promise<void> {
     try {
-      logger.info(`Sync job updated: ${event.syncJobId}`);
-
-      // TODO: Send notification to user if status changed
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onSyncJobUpdated listener:', error);
+      logger.info({ syncJobId: event.syncJobId }, 'Sync job updated');
+    } catch (err) {
+      logger.error('Error in onSyncJobUpdated listener', err);
     }
   }
 
-  // Handle sync job deleted event
-  async onSyncJobDeleted(event: SyncJobDeletedEvent) {
+  async onSyncJobDeleted(event: SyncJobDeletedEvent): Promise<void> {
     try {
-      logger.info(`Sync job deleted: ${event.syncJobId}`);
-
-      // TODO: Clean up associated data
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onSyncJobDeleted listener:', error);
+      logger.info({ syncJobId: event.syncJobId }, 'Sync job deleted');
+    } catch (err) {
+      logger.error('Error in onSyncJobDeleted listener', err);
     }
   }
 
-  // Handle sync job started event
-  async onSyncJobStarted(event: SyncJobStartedEvent) {
+  async onSyncJobStarted(event: SyncJobStartedEvent): Promise<void> {
     try {
-      logger.info(`Sync job started: ${event.syncJobId} for business ${event.businessId}`);
-
-      // TODO: Send notification to user
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onSyncJobStarted listener:', error);
+      logger.info(
+        { syncJobId: event.syncJobId, businessId: event.businessId },
+        'Sync job started',
+      );
+    } catch (err) {
+      logger.error('Error in onSyncJobStarted listener', err);
     }
   }
 
-  // Handle sync job completed event
-  async onSyncJobCompleted(event: SyncJobCompletedEvent) {
+  async onSyncJobCompleted(event: SyncJobCompletedEvent): Promise<void> {
     try {
-      logger.info(`Sync job completed: ${event.syncJobId} for business ${event.businessId} (${event.pagesProcessed} pages, ${event.documentsProcessed} documents)`);
-
-      // TODO: Send notification to user
-      // TODO: Update analytics
-      // TODO: Trigger knowledge base update if website sync
-      // TODO: Trigger chatbot context update if needed
-
-    } catch (error) {
-      logger.error('Error in onSyncJobCompleted listener:', error);
+      logger.info(
+        {
+          syncJobId: event.syncJobId,
+          businessId: event.businessId,
+          pagesProcessed: event.pagesProcessed,
+          documentsProcessed: event.documentsProcessed,
+        },
+        'Sync job completed',
+      );
+    } catch (err) {
+      logger.error('Error in onSyncJobCompleted listener', err);
     }
   }
 
-  // Handle sync job failed event
-  async onSyncJobFailed(event: SyncJobFailedEvent) {
+  async onSyncJobFailed(event: SyncJobFailedEvent): Promise<void> {
     try {
-      logger.info(`Sync job failed: ${event.syncJobId} for business ${event.businessId} (${event.error})`);
-
-      // TODO: Send notification to user
-      // TODO: Update analytics
-      // TODO: Retry mechanism if applicable
-
-    } catch (error) {
-      logger.error('Error in onSyncJobFailed listener:', error);
+      logger.info(
+        { syncJobId: event.syncJobId, error: event.error },
+        'Sync job failed',
+      );
+    } catch (err) {
+      logger.error('Error in onSyncJobFailed listener', err);
     }
   }
 }
 
-// Export singleton instance
 export const syncListener = new SyncListener();

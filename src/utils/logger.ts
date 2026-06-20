@@ -1,8 +1,8 @@
-import pino from 'pino';
+import pino, { Logger as PinoLogger } from 'pino';
 import { config } from '../config';
 
 // Configure pino logger
-export const logger = pino({
+export const logger: PinoLogger = pino({
   level: config.logLevel || 'info',
   transport:
     process.env.NODE_ENV === 'development'
@@ -11,14 +11,14 @@ export const logger = pino({
           options: {
             colorize: true,
             translateTime: 'SYS:standard',
-            ignore: 'pid,hostname'
-          }
+            ignore: 'pid,hostname',
+          },
         }
       : undefined,
   base: {
-    pid: process.pid
+    pid: process.pid,
   },
-  timestamp: pino.stdTimeFunctions.isoTime
+  timestamp: pino.stdTimeFunctions.isoTime,
 });
 
 export default logger;

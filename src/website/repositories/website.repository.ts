@@ -1,119 +1,103 @@
 import { prisma } from '../../lib/prisma';
 import { Website, WebsitePage } from '@prisma/client';
 
-// Website repository
 export class WebsiteRepository {
-  async findByBusinessId(...args: any[]) { return null as any; }
-  async updateWebsite(...args: any[]) { return null as any; }
-  async createWebsite(...args: any[]) { return null as any; }
-  async deleteWebsite(...args: any[]) { return null as any; }
-  async updateCrawlStatus(...args: any[]) { return null as any; }
-  async createPage(...args: any[]) { return null as any; }
-  async deletePagesByWebsiteId(...args: any[]) { return null as any; }
-  async getPagesByWebsiteId(...args: any[]) { return null as any; }
-
-  // Find website by ID
   async findById(id: string): Promise<Website | null> {
-    return prisma.website.findUnique({
-      where: { id }
-    });
+    return prisma.website.findUnique({ where: { id } });
   }
 
-  // Find website by business ID
   async findByBusinessId(businessId: string): Promise<Website | null> {
-    return prisma.website.findUnique({
-      where: { businessId }
-    });
+    return prisma.website.findFirst({ where: { businessId } });
   }
 
-  // Create website
   async createWebsite(data: {
     businessId: string;
     url: string;
-    title?: string;
-    description?: string;
-    faviconUrl?: string;
+    title?: string | null;
+    description?: string | null;
+    faviconUrl?: string | null;
   }): Promise<Website> {
     return prisma.website.create({
       data: {
         businessId: data.businessId,
         url: data.url,
-        title: data.title,
-        description: data.description,
-        faviconUrl: data.faviconUrl
-      }
+        title: data.title ?? null,
+        description: data.description ?? null,
+        faviconUrl: data.faviconUrl ?? null,
+      },
     });
   }
 
-  // Update website
-  async updateWebsite(id: string, data: Partial<Omit<Website, 'id' | 'businessId' | 'createdAt' | 'updatedAt'>>): Promise<Website> {
-    return prisma.website.update({
-      where: { id },
-      data
-    });
+  async updateWebsite(
+    id: string,
+    data: Partial<{
+      url: string;
+      title: string;
+      description: string;
+      faviconUrl: string;
+      crawlStatus: string;
+      lastCrawled: Date | null;
+      pageCount: number;
+    }>,
+  ): Promise<Website> {
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) sanitized[key] = value;
+    }
+    return prisma.website.update({ where: { id }, data: sanitized });
   }
 
-  // Delete website (soft delete)
   async deleteWebsite(id: string): Promise<Website> {
-    return prisma.website.update({
-      where: { id },
-      data: {  }
-    });
+    return prisma.website.delete({ where: { id } });
   }
 
-  // Update crawl status
-  async updateCrawlStatus(id: string, status: string, pageCount?: number): Promise<Website> {
+  async updateCrawlStatus(
+    id: string,
+    status: string,
+    pageCount?: number,
+  ): Promise<Website> {
     return prisma.website.update({
       where: { id },
       data: {
         crawlStatus: status,
         lastCrawled: new Date(),
-        pageCount: pageCount || 0
-      }
+        pageCount: pageCount ?? 0,
+      },
     });
   }
 
-  // Create website page
   async createPage(data: {
     websiteId: string;
     url: string;
-    title?: string;
-    content?: string;
-    summary?: string;
+    title?: string | null;
+    content?: string | null;
+    summary?: string | null;
   }): Promise<WebsitePage> {
     return prisma.websitePage.create({
       data: {
         websiteId: data.websiteId,
         url: data.url,
-        title: data.title,
-        content: data.content,
-        summary: data.summary
-      }
+        title: data.title ?? null,
+        content: data.content ?? null,
+        summary: data.summary ?? null,
+      },
     });
   }
 
-  // Get website pages
   async getPagesByWebsiteId(websiteId: string): Promise<WebsitePage[]> {
     return prisma.websitePage.findMany({
       where: { websiteId },
-      orderBy: { createdAt: 'asc' }
+      orderBy: { createdAt: 'asc' },
     });
   }
 
-  // Delete website pages (for recrawl)
   async deletePagesByWebsiteId(websiteId: string): Promise<void> {
-    await prisma.websitePage.deleteMany({
-      where: { websiteId }
-    });
+    await prisma.websitePage.deleteMany({ where: { websiteId } });
   }
 
-  // Get website count for business
   async countByBusinessId(businessId: string): Promise<number> {
-    return prisma.website.count({
-      where: { businessId }
-    });
+    return prisma.website.count({ where: { businessId } });
   }
 }
 
-// Export singleton instance
 export const websiteRepository = new WebsiteRepository();

@@ -15,8 +15,8 @@ export class AuditCreatedEvent {
 
 export class AuditUpdatedEvent {
   public readonly auditId: string;
-  public readonly updates: Partial<{
-    readinessScore: number;
+  public readonly updates: {
+    readinessScore?: number;
     businessSummary?: string;
     aiOpportunities?: string;
     automationSuggestions?: string;
@@ -25,20 +25,23 @@ export class AuditUpdatedEvent {
     weaknesses?: string;
     suggestedSolutions?: string;
     expectedRoi?: string;
-  }>;
+  };
   public readonly timestamp: Date;
 
-  constructor(auditId: string, updates: Partial<{
-    readinessScore: number;
-    businessSummary?: string;
-    aiOpportunities?: string;
-    automationSuggestions?: string;
-    estimatedBenefits?: string;
-    strengths?: string;
-    weaknesses?: string;
-    suggestedSolutions?: string;
-    expectedRoi?: string;
-  }>) {
+  constructor(
+    auditId: string,
+    updates: {
+      readinessScore?: number;
+      businessSummary?: string;
+      aiOpportunities?: string;
+      automationSuggestions?: string;
+      estimatedBenefits?: string;
+      strengths?: string;
+      weaknesses?: string;
+      suggestedSolutions?: string;
+      expectedRoi?: string;
+    },
+  ) {
     this.auditId = auditId;
     this.updates = updates;
     this.timestamp = new Date();

@@ -1,23 +1,47 @@
 import { prisma } from '../../lib/prisma';
 import { BusinessSettings } from '@prisma/client';
 
-// Business settings repository
 export class BusinessSettingsRepository {
-  // Find settings by business ID
   async findByBusinessId(businessId: string): Promise<BusinessSettings | null> {
-    return prisma.businessSettings.findUnique({
-      where: { businessId }
+    return prisma.businessSettings.findUnique({ where: { businessId } });
+  }
+
+  async upsert(
+    businessId: string,
+    data: Partial<{
+      timezone: string;
+      language: string;
+      emailNotifications: boolean;
+      analyticsSharing: boolean;
+      dataRetentionDays: number;
+    }>,
+  ): Promise<BusinessSettings> {
+    return prisma.businessSettings.upsert({
+      where: { businessId },
+      update: data,
+      create: {
+        businessId,
+        timezone: data.timezone ?? 'UTC',
+        language: data.language ?? 'en',
+        emailNotifications: data.emailNotifications ?? true,
+        analyticsSharing: data.analyticsSharing ?? true,
+        dataRetentionDays: data.dataRetentionDays ?? 90,
+      },
     });
   }
 
-  // Update settings
-  async update(businessId: string, data: Partial<Omit<BusinessSettings, 'id' | 'businessId' | 'createdAt' | 'updatedAt'>>): Promise<BusinessSettings> {
-    return prisma.businessSettings.update({
-      where: { businessId },
-      data
-    });
+  async update(
+    businessId: string,
+    data: Partial<{
+      timezone: string;
+      language: string;
+      emailNotifications: boolean;
+      analyticsSharing: boolean;
+      dataRetentionDays: number;
+    }>,
+  ): Promise<BusinessSettings> {
+    return prisma.businessSettings.update({ where: { businessId }, data });
   }
 }
 
-// Export singleton instance
 export const businessSettingsRepository = new BusinessSettingsRepository();

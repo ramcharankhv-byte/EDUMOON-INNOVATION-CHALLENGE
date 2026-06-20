@@ -1,196 +1,150 @@
+import multer from 'multer';
 import { Request, Response, NextFunction } from 'express';
-import { uploadDocumentSchema, updateDocumentSchema } from '../validators/document.validator';
-import { documentService } from './services/document.service';
-import { logger } from '../../utils/logger';
-import { authenticate } from '../../middleware/auth.middleware';
-import { upload } from './services/document.service';
+import {
+  uploadDocumentSchema,
+  updateDocumentSchema,
+  markAsProcessedSchema,
+} from '../validators/document.validator';
+import { documentService, upload } from '../services/document.service';
+import { businessRepository } from '../../business/repositories/business.repository';
+import logger from '../../utils/logger';
 
-// Document controller
 export class DocumentController {
-  async upload(...args: any[]) { return null as any; }
-  async getById(...args: any[]) { return null as any; }
-  async getByUser(...args: any[]) { return null as any; }
-  async update(...args: any[]) { return null as any; }
-  async delete(...args: any[]) { return null as any; }
-  async markAsProcessed(...args: any[]) { return null as any; }
-  async getCount(...args: any[]) { return null as any; }
-
-  // Upload document
+  // POST /api/documents/upload
   async upload(req: Request, res: Response, next: NextFunction) {
-    try {
-      // Use multer middleware for file upload
-      upload.single('file')(req, res, async (err: any) => {
-        if (err) {
-          if (err instanceof multer.MulterError) {
-            return res.status(400).json({ error: `File upload error: ${err.message}` });
-          } else {
-            return res.status(400).json({ error: err.message });
-          }
+    upload.single('file')(req, res, async (multerErr: unknown) => {
+      if (multerErr) {
+        const message =
+          multerErr instanceof multer.MulterError
+            ? `File upload error: ${multerErr.message}`
+            : (multerErr as Error).message;
+        return res.status(400).json({ error: message });
+      }
+
+      try {
+        const userId = req.user?.id;
+        if (!userId) {
+          return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        try {
-          // Get user ID from authenticated request
-          const userId = req.user?.id;
-          if (!userId) {
-            return res.status(401).json({ error: 'Unauthorized' });
-          }
-
-          // Get business for user
-          const business = await req.context.businessRepository.findByUserId(userId);
-          if (!business) {
-            return res.status(404).json({ error: 'Business not found' });
-          }
-
-          // Validate metadata
-          const validatedData = uploadDocumentSchema.parse(req.body);
-
-          // Upload document
-          const document = await documentService.uploadDocument(
-            business.id,
-            req.file,
-            validatedData.description
-          );
-
-          return res.status(201).json({
-            message: 'Document uploaded successfully',
-            document
-          });
-        } catch (error) {
-          next(error);
+        const business = await businessRepository.findByUserId(userId);
+        if (!business) {
+          return res.status(404).json({ error: 'Business not found' });
         }
-      });
-    } catch (error) {
-      next(error);
-    }
+
+        if (!req.file) {
+          return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const metadata = uploadDocumentSchema.parse(req.body);
+        const document = await documentService.uploadDocument(
+          business.id,
+          req.file,
+          metadata.description,
+        );
+
+        return res.status(201).json({
+          message: 'Document uploaded successfully',
+          document,
+        });
+      } catch (error) {
+        logger.error('Document upload failed', error);
+        return next(error);
+      }
+    });
   }
 
-  // Get document by ID
+  // GET /api/documents/:id
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-
-      // Get document
       const document = await documentService.getDocumentById(id);
-
-      // Optional: Check if user owns the document's business
-      // const userId = req.user?.id;
-      // if (userId) {
-      //   const business = await req.context.businessRepository.findByUserId(userId);
-      //   if (!business || document.businessId !== business.id) {
-      //     return res.status(403).json({ error: 'Forbidden' });
-      //   }
-      // }
-
-      return res.status(200).json({
-        document
-      });
+      return res.status(200).json({ document });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get documents by user (business)
+  // GET /api/documents — list documents for the auth'd business
   async getByUser(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
+      const business = await businessRepository.findByUserId(userId);
       if (!business) {
         return res.status(404).json({ error: 'Business not found' });
       }
-
       const documents = await documentService.getDocumentsByBusinessId(business.id);
-
-      return res.status(200).json({
-        documents
-      });
+      return res.status(200).json({ documents });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Update document
+  // PUT /api/documents/:id
   async update(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-
-      // Validate input
-      const validatedData = updateDocumentSchema.parse(req.body);
-
-      // Update document
-      const document = await documentService.updateDocument(id, validatedData);
-
+      const data = updateDocumentSchema.parse(req.body);
+      const document = await documentService.updateDocument(id, data);
       return res.status(200).json({
         message: 'Document updated successfully',
-        document
+        document,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Delete document
+  // DELETE /api/documents/:id
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-
-      // Delete document
       await documentService.deleteDocument(id);
-
-      return res.status(200).json({
-        message: 'Document deleted successfully'
-      });
+      return res.status(200).json({ message: 'Document deleted successfully' });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Mark document as processed
+  // POST /api/documents/:id/process
   async markAsProcessed(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { extractedText, chunkCount } = req.body;
-
-      // Mark document as processed
-      const document = await documentService.markAsProcessed(id, extractedText, chunkCount);
-
+      const body = markAsProcessedSchema.parse(req.body);
+      const document = await documentService.markAsProcessed(
+        id,
+        body.extractedText,
+        body.chunkCount,
+      );
       return res.status(200).json({
         message: 'Document marked as processed successfully',
-        document
+        document,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get document count for user
+  // GET /api/documents/count
   async getCount(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
+      const business = await businessRepository.findByUserId(userId);
       if (!business) {
         return res.status(404).json({ error: 'Business not found' });
       }
-
       const count = await documentService.getDocumentCount(business.id);
-
-      return res.status(200).json({
-        count
-      });
+      return res.status(200).json({ count });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 }
 
-// Export singleton instance
 export const documentController = new DocumentController();

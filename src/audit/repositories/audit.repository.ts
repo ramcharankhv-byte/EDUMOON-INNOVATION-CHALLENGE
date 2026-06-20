@@ -1,83 +1,77 @@
 import { prisma } from '../../lib/prisma';
-import { Audit } from '@prisma/client';
+import { Audit, Prisma } from '@prisma/client';
 
-// Audit repository
 export class AuditRepository {
-  // Find audit by ID
   async findById(id: string): Promise<Audit | null> {
-    return prisma.audit.findUnique({
-      where: { id }
-    });
+    return prisma.audit.findUnique({ where: { id } });
   }
 
-  // Find audits by business ID
   async findByBusinessId(businessId: string): Promise<Audit[]> {
     return prisma.audit.findMany({
       where: { businessId },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
   }
 
-  // Find latest audit by business ID
   async findLatestByBusinessId(businessId: string): Promise<Audit | null> {
     return prisma.audit.findFirst({
       where: { businessId },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
   }
 
-  // Create audit
   async createAudit(data: {
     businessId: string;
     readinessScore: number;
-    businessSummary?: string;
-    aiOpportunities?: string;
-    automationSuggestions?: string;
-    estimatedBenefits?: string;
-    strengths?: string;
-    weaknesses?: string;
-    suggestedSolutions?: string;
-    expectedRoi?: string;
+    businessSummary?: string | null;
+    aiOpportunities?: Prisma.InputJsonValue;
+    automationSuggestions?: Prisma.InputJsonValue;
+    estimatedBenefits?: Prisma.InputJsonValue;
+    strengths?: Prisma.InputJsonValue;
+    weaknesses?: Prisma.InputJsonValue;
+    suggestedSolutions?: Prisma.InputJsonValue;
+    expectedRoi?: Prisma.InputJsonValue;
   }): Promise<Audit> {
     return prisma.audit.create({
       data: {
         businessId: data.businessId,
         readinessScore: data.readinessScore,
-        businessSummary: data.businessSummary,
-        aiOpportunities: data.aiOpportunities,
-        automationSuggestions: data.automationSuggestions,
-        estimatedBenefits: data.estimatedBenefits,
-        strengths: data.strengths,
-        weaknesses: data.weaknesses,
-        suggestedSolutions: data.suggestedSolutions,
-        expectedRoi: data.expectedRoi
-      }
+        businessSummary: data.businessSummary ?? null,
+        aiOpportunities: data.aiOpportunities ?? Prisma.JsonNull,
+        automationSuggestions: data.automationSuggestions ?? Prisma.JsonNull,
+        estimatedBenefits: data.estimatedBenefits ?? Prisma.JsonNull,
+        strengths: data.strengths ?? Prisma.JsonNull,
+        weaknesses: data.weaknesses ?? Prisma.JsonNull,
+        suggestedSolutions: data.suggestedSolutions ?? Prisma.JsonNull,
+        expectedRoi: data.expectedRoi ?? Prisma.JsonNull,
+      },
     });
   }
 
-  // Update audit
-  async updateAudit(id: string, data: Partial<Omit<Audit, 'id' | 'businessId' | 'createdAt'>>): Promise<Audit> {
-    return prisma.audit.update({
-      where: { id },
-      data
-    });
+  async updateAudit(
+    id: string,
+    data: Partial<{
+      readinessScore: number;
+      businessSummary: string;
+      aiOpportunities: Prisma.InputJsonValue;
+      automationSuggestions: Prisma.InputJsonValue;
+      estimatedBenefits: Prisma.InputJsonValue;
+      strengths: Prisma.InputJsonValue;
+      weaknesses: Prisma.InputJsonValue;
+      suggestedSolutions: Prisma.InputJsonValue;
+      expectedRoi: Prisma.InputJsonValue;
+    }>,
+  ): Promise<Audit> {
+    return prisma.audit.update({ where: { id }, data });
   }
 
-  // Delete audit (soft delete)
   async deleteAudit(id: string): Promise<Audit> {
-    return prisma.audit.update({
-      where: { id },
-      data: {  }
-    });
+    return prisma.audit.delete({ where: { id } });
   }
 
-  // Get audit count for business
   async countByBusinessId(businessId: string): Promise<number> {
-    return prisma.audit.count({
-      where: { businessId }
-    });
+    return prisma.audit.count({ where: { businessId } });
   }
 }
 
-// Export singleton instance
 export const auditRepository = new AuditRepository();

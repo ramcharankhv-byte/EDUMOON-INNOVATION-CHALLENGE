@@ -1,124 +1,80 @@
 import { Request, Response, NextFunction } from 'express';
+import { businessRepository } from '../../business/repositories/business.repository';
 import { createWidgetSchema, updateWidgetSchema } from '../validators/widget.validator';
-import { widgetService } from './services/widget.service';
-import { logger } from '../../utils/logger';
-import { authenticate } from '../../middleware/auth.middleware';
+import { widgetService } from '../services/widget.service';
 
-// Widget controller
+async function resolveBusiness(req: Request): Promise<string | { error: string; status: number }> {
+  const userId = req.user?.id;
+  if (!userId) return { error: 'Unauthorized', status: 401 };
+  const business = await businessRepository.findByUserId(userId);
+  if (!business) return { error: 'Business not found', status: 404 };
+  return business.id;
+}
+
 export class WidgetController {
-  async getByBusinessId(...args: any[]) { return null as any; }
-  async create(...args: any[]) { return null as any; }
-  async update(...args: any[]) { return null as any; }
-  async delete(...args: any[]) { return null as any; }
-
-  // Get widget for business
+  // GET /api/widget
   async getByBusinessId(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Get widget
-      const widget = await widgetService.getWidgetByBusinessId(business.id);
-
-      return res.status(200).json({
-        widget
-      });
+      const widget = await widgetService.getWidgetByBusinessId(resolved);
+      return res.status(200).json({ widget });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Create widget for business
+  // POST /api/widget
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Validate input
-      const validatedData = createWidgetSchema.parse(req.body);
-
-      // Create widget
-      const widget = await widgetService.createWidget(business.id, validatedData);
-
-      return res.status(201).json({
-        message: 'Widget created successfully',
-        widget
-      });
+      const body = createWidgetSchema.parse(req.body);
+      const widget = await widgetService.createWidget(resolved, body);
+      return res.status(201).json({ message: 'Widget created successfully', widget });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Update widget
+  // PUT /api/widget
   async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Validate input
-      const validatedData = updateWidgetSchema.parse(req.body);
-
-      // Update widget
-      const widget = await widgetService.updateWidget(business.id, validatedData);
-
-      return res.status(200).json({
-        message: 'Widget updated successfully',
-        widget
+      const body = updateWidgetSchema.parse(req.body);
+      const widget = await widgetService.updateWidget(resolved, {
+        title: body.title,
+        theme: body.theme,
+        position: body.position,
+        isEnabled: body.isEnabled,
+        customCss: body.customCss ?? undefined,
       });
+      return res.status(200).json({ message: 'Widget updated successfully', widget });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Delete widget
+  // DELETE /api/widget
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Delete widget
-      await widgetService.deleteWidget(business.id);
-
-      return res.status(200).json({
-        message: 'Widget deleted successfully'
-      });
+      await widgetService.deleteWidget(resolved);
+      return res.status(200).json({ message: 'Widget deleted successfully' });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 }
 
-// Export singleton instance
 export const widgetController = new WidgetController();

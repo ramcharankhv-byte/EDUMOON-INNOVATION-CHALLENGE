@@ -1,27 +1,34 @@
 import { prisma } from '../../lib/prisma';
 import { Document } from '@prisma/client';
+import { DocumentType } from '@prisma/client';
+
+const SUPPORTED_EXTENSIONS: Record<string, DocumentType> = {
+  '.pdf': DocumentType.PDF,
+  '.docx': DocumentType.DOCX,
+  '.txt': DocumentType.TXT,
+};
+
+export function extensionToDocumentType(ext: string): DocumentType {
+  const normalized = ext.toLowerCase();
+  const type = SUPPORTED_EXTENSIONS[normalized];
+  if (!type) {
+    throw new Error(`Unsupported file type: ${ext}`);
+  }
+  return type;
+}
 
 // Document repository
 export class DocumentRepository {
-  async createDocument(...args: any[]) { return null as any; }
-  async findByBusinessId(...args: any[]) { return null as any; }
-  async updateDocument(...args: any[]) { return null as any; }
-  async deleteDocument(...args: any[]) { return null as any; }
-  async markAsProcessed(...args: any[]) { return null as any; }
-  async countByBusinessId(...args: any[]) { return null as any; }
-
   // Find document by ID
   async findById(id: string): Promise<Document | null> {
-    return prisma.document.findUnique({
-      where: { id }
-    });
+    return prisma.document.findUnique({ where: { id } });
   }
 
-  // Find documents by business ID
+  // Find documents by business ID (excludes soft-deleted)
   async findByBusinessId(businessId: string): Promise<Document[]> {
     return prisma.document.findMany({
-      where: { businessId,  },
-      orderBy: { createdAt: 'desc' }
+      where: { businessId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
@@ -32,10 +39,12 @@ export class DocumentRepository {
     originalName: string;
     mimeType: string;
     size: number;
-    type: string;
+    type: DocumentType;
     url: string;
-    description?: string;
+    description?: string | null;
   }): Promise<Document> {
+    const description =
+      data.description === undefined ? undefined : data.description;
     return prisma.document.create({
       data: {
         businessId: data.businessId,
@@ -45,46 +54,52 @@ export class DocumentRepository {
         size: data.size,
         type: data.type,
         url: data.url,
-        description: data.description
-      }
+        ...(description !== undefined ? { description } : {}),
+      },
     });
   }
 
   // Update document
-  async updateDocument(id: string, data: Partial<Omit<Document, 'id' | 'businessId' | 'createdAt' | 'updatedAt' | 'deletedAt'>>): Promise<Document> {
-    return prisma.document.update({
-      where: { id },
-      data
-    });
+  async updateDocument(
+    id: string,
+    data: Partial<{
+      description: string | null;
+      isProcessed: boolean;
+      extractedText: string | null;
+      chunkCount: number;
+    }>,
+  ): Promise<Document> {
+    return prisma.document.update({ where: { id }, data });
   }
 
-  // Delete document (soft delete)
+  // Soft delete document
   async deleteDocument(id: string): Promise<Document> {
     return prisma.document.update({
       where: { id },
-      data: {  }
+      data: { deletedAt: new Date() },
     });
   }
 
   // Mark document as processed
-  async markAsProcessed(id: string, extractedText?: string, chunkCount?: number): Promise<Document> {
+  async markAsProcessed(
+    id: string,
+    extractedText?: string,
+    chunkCount?: number,
+  ): Promise<Document> {
     return prisma.document.update({
       where: { id },
       data: {
         isProcessed: true,
-        extractedText: extractedText || null,
-        chunkCount: chunkCount || 0
-      }
+        extractedText: extractedText ?? null,
+        chunkCount: chunkCount ?? 0,
+      },
     });
   }
 
-  // Get document count for business
+  // Get document count for business (excludes soft-deleted)
   async countByBusinessId(businessId: string): Promise<number> {
-    return prisma.document.count({
-      where: { businessId,  }
-    });
+    return prisma.document.count({ where: { businessId, deletedAt: null } });
   }
 }
 
-// Export singleton instance
 export const documentRepository = new DocumentRepository();

@@ -1,20 +1,21 @@
 import { z } from 'zod';
 
-// Document upload schema
 export const uploadDocumentSchema = z.object({
-  // File validation will be handled by multer middleware
-  // This schema is for metadata if needed
-  description: z.string().optional()
+  description: z.string().max(500).optional(),
 });
 
-// Document update schema
 export const updateDocumentSchema = z.object({
-  description: z.string().optional(),
-  isProcessed: z.boolean().optional()
+  description: z.string().max(500).optional(),
+  isProcessed: z.boolean().optional(),
 });
 
-// Export schemas
+export const markAsProcessedSchema = z.object({
+  extractedText: z.string().optional(),
+  chunkCount: z.number().int().nonnegative().optional(),
+});
+
 export const documentValidators = {
   upload: uploadDocumentSchema,
-  update: updateDocumentSchema
+  update: updateDocumentSchema,
+  markAsProcessed: markAsProcessedSchema,
 };

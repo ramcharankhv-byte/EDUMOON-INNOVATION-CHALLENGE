@@ -1,10 +1,25 @@
-import { User } from '@prisma/client';
+import { Role } from '@prisma/client';
 
 declare global {
   namespace Express {
+    interface UserContext {
+      requestId?: string;
+      correlationId?: string;
+      startedAt?: number;
+    }
+
     interface Request {
-      user?: User;
-      context?: any; // Replace with proper Context interface if available
+      user?: {
+        id: string;
+        email: string;
+        firstName?: string;
+        lastName?: string;
+        role: Role;
+        isVerified?: boolean;
+      };
+      context?: UserContext;
     }
   }
 }
+
+export {};

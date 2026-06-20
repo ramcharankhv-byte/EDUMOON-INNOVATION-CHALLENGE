@@ -1,10 +1,11 @@
-import { logger } from '../../utils/logger';
-import { prisma } from '../../lib/prisma';
-import { UserRegisteredEvent } from './auth.event';
-import { UserVerifiedEvent } from './auth.event';
-import { UserLoggedInEvent } from './auth.event';
-import { PasswordResetEvent } from './auth.event';
-import { UserLoggedOutEvent } from './auth.event';
+import logger from '../../utils/logger';
+import {
+  PasswordResetEvent,
+  UserLoggedInEvent,
+  UserLoggedOutEvent,
+  UserRegisteredEvent,
+  UserVerifiedEvent,
+} from '../events/auth.event';
 
 // Auth listeners for handling side effects
 export class AuthListener {

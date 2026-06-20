@@ -1,29 +1,33 @@
 import { prisma } from '../../lib/prisma';
-import { Business, BusinessSettings, User } from '@prisma/client';
+import { Business, BusinessSettings, Industry, Prisma } from '@prisma/client';
 
-// Business repository for business-related database operations
+export interface BusinessListFilters {
+  industry?: Industry;
+  name?: string;
+  isActive?: boolean;
+}
+
+export interface BusinessListResult {
+  businesses: Business[];
+  total: number;
+}
+
+// Business repository
 export class BusinessRepository {
-  // Find business by ID
   async findById(id: string): Promise<Business | null> {
-    return prisma.business.findUnique({
-      where: { id }
-    });
+    return prisma.business.findUnique({ where: { id } });
   }
 
-  // Find business by user ID
   async findByUserId(userId: string): Promise<Business | null> {
-    return prisma.business.findUnique({
-      where: { userId }
-    });
+    return prisma.business.findFirst({ where: { userId } });
   }
 
-  // Create new business
   async createBusiness(data: {
     userId: string;
     name: string;
     description?: string;
     websiteUrl?: string;
-    industry: string;
+    industry: Industry;
     contactEmail?: string;
     contactPhone?: string;
     address?: string;
@@ -32,76 +36,71 @@ export class BusinessRepository {
       data: {
         userId: data.userId,
         name: data.name,
-        description: data.description,
-        websiteUrl: data.websiteUrl,
+        description: data.description ?? null,
+        websiteUrl: data.websiteUrl ?? null,
         industry: data.industry,
-        contactEmail: data.contactEmail,
-        contactPhone: data.contactPhone,
-        address: data.address
-      }
+        contactEmail: data.contactEmail ?? null,
+        contactPhone: data.contactPhone ?? null,
+        address: data.address ?? null,
+      },
     });
   }
 
-  // Update business
-  async updateBusiness(id: string, data: Partial<Omit<Business, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'deletedAt'>>): Promise<Business> {
-    return prisma.business.update({
-      where: { id },
-      data
-    });
+  async updateBusiness(
+    id: string,
+    data: Partial<{
+      name: string;
+      description: string | null;
+      websiteUrl: string | null;
+      industry: Industry;
+      contactEmail: string | null;
+      contactPhone: string | null;
+      address: string | null;
+      isActive: boolean;
+    }>,
+  ): Promise<Business> {
+    return prisma.business.update({ where: { id }, data });
   }
 
-  // Delete business (soft delete)
   async deleteBusiness(id: string): Promise<Business> {
     return prisma.business.update({
       where: { id },
-      data: {  }
+      data: { deletedAt: new Date() },
     });
   }
 
-  // Find businesses with pagination and filters
   async findMany(
     skip = 0,
     take = 10,
-    filters: {
-      industry?: string;
-      name?: string;
-      isActive?: boolean;
-    } = {}
-  ): Promise<{ businesses: Business[]; total: number }> {
-    const where: any = {};
+    filters: BusinessListFilters = {},
+  ): Promise<BusinessListResult> {
+    const where: Prisma.BusinessWhereInput = { deletedAt: null };
 
-    if (filters.industry) {
-      where.industry = filters.industry;
-    }
-
+    if (filters.industry) where.industry = filters.industry;
     if (filters.name) {
-      where.name = {
-        contains: filters.name,
-        mode: 'insensitive'
-      };
+      where.name = { contains: filters.name, mode: 'insensitive' };
     }
-
-    if (filters.isActive !== undefined) {
-      where.isActive = filters.isActive;
-    }
-
-    // Exclude soft deleted businesses
-    where.deletedAt = null;
+    if (filters.isActive !== undefined) where.isActive = filters.isActive;
 
     const [businesses, total] = await prisma.$transaction([
       prisma.business.findMany({
         where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
       }),
-      prisma.business.count({ where })
+      prisma.business.count({ where }),
     ]);
 
     return { businesses, total };
   }
 
-  // Create business settings
+  async countActive(): Promise<number> {
+    return prisma.business.count({ where: { deletedAt: null, isActive: true } });
+  }
+
+  // Settings helpers (lives here for legacy callers; new code should
+  // import from business-settings.repository directly).
   async createBusinessSettings(data: {
     businessId: string;
     timezone?: string;
@@ -113,30 +112,27 @@ export class BusinessRepository {
     return prisma.businessSettings.create({
       data: {
         businessId: data.businessId,
-        timezone: data.timezone,
-        language: data.language,
-        emailNotifications: data.emailNotifications,
-        analyticsSharing: data.analyticsSharing,
-        dataRetentionDays: data.dataRetentionDays
-      }
+        timezone: data.timezone ?? 'UTC',
+        language: data.language ?? 'en',
+        emailNotifications: data.emailNotifications ?? true,
+        analyticsSharing: data.analyticsSharing ?? true,
+        dataRetentionDays: data.dataRetentionDays ?? 90,
+      },
     });
   }
 
-  // Update business settings
-  async updateBusinessSettings(id: string, data: Partial<Omit<BusinessSettings, 'id' | 'businessId' | 'createdAt' | 'updatedAt'>>): Promise<BusinessSettings> {
-    return prisma.businessSettings.update({
-      where: { id },
-      data
-    });
+  async updateBusinessSettings(
+    id: string,
+    data: Partial<Omit<BusinessSettings, 'id' | 'businessId' | 'createdAt' | 'updatedAt'>>,
+  ): Promise<BusinessSettings> {
+    return prisma.businessSettings.update({ where: { id }, data });
   }
 
-  // Find business settings by business ID
-  async findBusinessSettingsByBusinessId(businessId: string): Promise<BusinessSettings | null> {
-    return prisma.businessSettings.findUnique({
-      where: { businessId }
-    });
+  async findBusinessSettingsByBusinessId(
+    businessId: string,
+  ): Promise<BusinessSettings | null> {
+    return prisma.businessSettings.findUnique({ where: { businessId } });
   }
 }
 
-// Export singleton instance
 export const businessRepository = new BusinessRepository();

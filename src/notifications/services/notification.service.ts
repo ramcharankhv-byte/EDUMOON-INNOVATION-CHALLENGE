@@ -1,172 +1,146 @@
-import { notificationRepository } from './repositories/notification.repository';
-import { businessRepository } from '../business/repositories/business.repository';
-import { logger } from '../../utils/logger';
-import { NotificationEvent } from './events/notification.event';
-import { notificationListener } from './listeners/notification.listener';
+import { Notification, NotificationType } from '@prisma/client';
+import { notificationRepository } from '../repositories/notification.repository';
+import { businessRepository } from '../../business/repositories/business.repository';
+import {
+  NotificationAllMarkedAsReadEvent,
+  NotificationCreatedEvent,
+  NotificationDeletedEvent,
+  NotificationMarkedAsReadEvent,
+  NotificationMarkedAsUnreadEvent,
+  NotificationUpdatedEvent,
+} from '../events/notification.event';
+import { notificationListener } from '../listeners/notification.listener';
 
-// Notification service
+export interface CreateNotificationInput {
+  title: string;
+  message: string;
+  type: NotificationType;
+  isRead?: boolean;
+  businessId?: string;
+}
+
+export type UpdateNotificationInput = Partial<Omit<CreateNotificationInput, 'businessId'>>;
+
 export class NotificationService {
-  async createNotification(...args: any[]) { return null as any; }
-  async getNotificationById(...args: any[]) { return null as any; }
-  async getNotificationsByBusinessId(...args: any[]) { return null as any; }
-  async getUnreadNotificationsByBusinessId(...args: any[]) { return null as any; }
-  async updateNotification(...args: any[]) { return null as any; }
-  async deleteNotification(...args: any[]) { return null as any; }
-  async markAsRead(...args: any[]) { return null as any; }
-  async markAsUnread(...args: any[]) { return null as any; }
-  async markAllAsRead(...args: any[]) { return null as any; }
-  async getNotificationCount(...args: any[]) { return null as any; }
-  async getUnreadNotificationCount(...args: any[]) { return null as any; }
+  // ---------------------------------------------------------------------------
+  // Reads
+  // ---------------------------------------------------------------------------
+  async getById(id: string): Promise<Notification> {
+    const n = await notificationRepository.findById(id);
+    if (!n) throw new Error('Notification not found');
+    return n;
+  }
 
-  // Create notification
-  async createNotification(businessId: string, data: {
-    title: string;
-    message: string;
-    type: string;
-    isRead?: boolean;
-  }) {
-    // Verify business exists
+  async getByBusinessId(businessId: string): Promise<Notification[]> {
     const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
+    if (!business) throw new Error('Business not found');
+    return notificationRepository.findByBusinessId(businessId);
+  }
 
-    // Create notification
+  async getUnreadByBusinessId(businessId: string): Promise<Notification[]> {
+    const business = await businessRepository.findById(businessId);
+    if (!business) throw new Error('Business not found');
+    return notificationRepository.findUnreadByBusinessId(businessId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Mutate
+  // ---------------------------------------------------------------------------
+  async createNotification(businessId: string, data: CreateNotificationInput): Promise<Notification> {
+    const business = await businessRepository.findById(businessId);
+    if (!business) throw new Error('Business not found');
+
     const notification = await notificationRepository.createNotification({
       businessId,
       title: data.title,
       message: data.message,
       type: data.type,
-      isRead: data.isRead
+      isRead: data.isRead,
     });
 
-    // Emit notification created event
-    const notificationCreatedEvent = new NotificationEvent.NotificationCreatedEvent(
-      notification.id,
-      businessId,
-      notification.type
+    await notificationListener.onNotificationCreated(
+      new NotificationCreatedEvent(notification.id, businessId, notification.type),
     );
-
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await notificationListener.onNotificationCreated(notificationCreatedEvent);
-
     return notification;
   }
 
-  // Get notification by ID
-  async getNotificationById(id: string) {
-    const notification = await notificationRepository.findById(id);
-    if (!notification) {
-      throw new Error('Notification not found');
-    }
-    return notification;
-  }
-
-  // Get notifications by business ID
-  async getNotificationsByBusinessId(businessId: string) {
-    // Verify business exists
-    const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
-
-    return notificationRepository.findByBusinessId(businessId);
-  }
-
-  // Get unread notifications by business ID
-  async getUnreadNotificationsByBusinessId(businessId: string) {
-    // Verify business exists
-    const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
-
-    return notificationRepository.findUnreadByBusinessId(businessId);
-  }
-
-  // Update notification
-  async updateNotification(id: string, data: {
-    title?: string;
-    message?: string;
-    type?: string;
-    isRead?: boolean;
-  }) {
-    // Check if notification exists
+  async updateNotification(id: string, data: UpdateNotificationInput): Promise<Notification> {
     const existing = await notificationRepository.findById(id);
-    if (!existing) {
-      throw new Error('Notification not found');
-    }
+    if (!existing) throw new Error('Notification not found');
 
-    return notificationRepository.updateNotification(id, data);
+    const updated = await notificationRepository.updateNotification(id, {
+      title: data.title,
+      message: data.message,
+      type: data.type,
+      isRead: data.isRead,
+      readAt: data.isRead === false ? null : data.isRead === true ? existing.readAt ?? new Date() : undefined,
+    });
+
+    await notificationListener.onNotificationUpdated(
+      new NotificationUpdatedEvent(updated.id, {
+        title: data.title,
+        message: data.message,
+        type: data.type,
+        isRead: data.isRead,
+      }),
+    );
+    return updated;
   }
 
-  // Delete notification
-  async deleteNotification(id: string) {
-    // Check if notification exists
+  async deleteNotification(id: string): Promise<Notification> {
     const existing = await notificationRepository.findById(id);
-    if (!existing) {
-      throw new Error('Notification not found');
-    }
-
-    return notificationRepository.deleteNotification(id);
+    if (!existing) throw new Error('Notification not found');
+    const deleted = await notificationRepository.deleteNotification(id);
+    await notificationListener.onNotificationDeleted(
+      new NotificationDeletedEvent(deleted.id),
+    );
+    return deleted;
   }
 
-  // Mark notification as read
-  async markAsRead(id: string) {
-    // Check if notification exists
+  async markAsRead(id: string): Promise<Notification> {
     const existing = await notificationRepository.findById(id);
-    if (!existing) {
-      throw new Error('Notification not found');
-    }
-
-    return notificationRepository.markAsRead(id);
+    if (!existing) throw new Error('Notification not found');
+    const updated = await notificationRepository.markAsRead(id);
+    await notificationListener.onNotificationMarkedAsRead(
+      new NotificationMarkedAsReadEvent(updated.id),
+    );
+    return updated;
   }
 
-  // Mark notification as unread
-  async markAsUnread(id: string) {
-    // Check if notification exists
+  async markAsUnread(id: string): Promise<Notification> {
     const existing = await notificationRepository.findById(id);
-    if (!existing) {
-      throw new Error('Notification not found');
-    }
-
-    return notificationRepository.markAsUnread(id);
+    if (!existing) throw new Error('Notification not found');
+    const updated = await notificationRepository.markAsUnread(id);
+    await notificationListener.onNotificationMarkedAsUnread(
+      new NotificationMarkedAsUnreadEvent(updated.id),
+    );
+    return updated;
   }
 
-  // Mark all notifications as read for a business
-  async markAllAsRead(businessId: string) {
-    // Verify business exists
+  async markAllAsRead(businessId: string): Promise<{ count: number }> {
     const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
-
-    return notificationRepository.markAllAsRead(businessId);
+    if (!business) throw new Error('Business not found');
+    const result = await notificationRepository.markAllAsRead(businessId);
+    await notificationListener.onNotificationAllMarkedAsRead(
+      new NotificationAllMarkedAsReadEvent(businessId, result.count),
+    );
+    return result;
   }
 
-  // Get notification count for business
-  async getNotificationCount(businessId: string) {
-    // Verify business exists
+  // ---------------------------------------------------------------------------
+  // Counts
+  // ---------------------------------------------------------------------------
+  async getCount(businessId: string): Promise<number> {
     const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
-
+    if (!business) throw new Error('Business not found');
     return notificationRepository.getCountByBusinessId(businessId);
   }
 
-  // Get unread notification count for business
-  async getUnreadNotificationCount(businessId: string) {
-    // Verify business exists
+  async getUnreadCount(businessId: string): Promise<number> {
     const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
-
+    if (!business) throw new Error('Business not found');
     return notificationRepository.getUnreadCountByBusinessId(businessId);
   }
 }
 
-// Export singleton instance
 export const notificationService = new NotificationService();
