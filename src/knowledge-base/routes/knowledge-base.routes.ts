@@ -1,74 +1,29 @@
 import { Router } from 'express';
-import { knowledgeBaseController } from './controllers/knowledge-base.controller';
+import { knowledgeBaseController } from '../controllers/knowledge-base.controller';
 import { validateRequest } from '../../middleware/validation.middleware';
-import { updateKnowledgeBaseSchema } from './validators/knowledge-base.validator';
+import {
+  createKnowledgeBaseSchema,
+  updateKnowledgeBaseSchema,
+  readySchema,
+} from '../validators/knowledge-base.validator';
 import { authenticate } from '../../middleware/auth.middleware';
 
 const router = Router();
 
-// All routes require authentication
 router.use(authenticate);
 
-// Get knowledge base for business
-router.get(
-  '/',
-  knowledgeBaseController.getByBusinessId
-);
+router.get('/', knowledgeBaseController.getByBusinessId);
+router.get('/stats', knowledgeBaseController.getStats);
 
-// Create knowledge base for business
-router.post(
-  '/',
-  validateRequest(updateKnowledgeBaseSchema),
-  knowledgeBaseController.create
-);
+router.post('/', validateRequest(createKnowledgeBaseSchema), knowledgeBaseController.create);
+router.put('/', validateRequest(updateKnowledgeBaseSchema), knowledgeBaseController.update);
+router.delete('/', knowledgeBaseController.delete);
 
-// Update knowledge base
-router.put(
-  '/',
-  validateRequest(updateKnowledgeBaseSchema),
-  knowledgeBaseController.update
-);
+router.post('/document', knowledgeBaseController.addDocument);
+router.delete('/document', knowledgeBaseController.removeDocument);
+router.post('/page', knowledgeBaseController.addPage);
+router.delete('/page', knowledgeBaseController.removePage);
 
-// Delete knowledge base
-router.delete(
-  '/',
-  knowledgeBaseController.delete
-);
-
-// Add document to knowledge base
-router.post(
-  '/document',
-  knowledgeBaseController.addDocument
-);
-
-// Remove document from knowledge base
-router.delete(
-  '/document',
-  knowledgeBaseController.removeDocument
-);
-
-// Add page to knowledge base
-router.post(
-  '/page',
-  knowledgeBaseController.addPage
-);
-
-// Remove page from knowledge base
-router.delete(
-  '/page',
-  knowledgeBaseController.removePage
-);
-
-// Set knowledge base as ready
-router.post(
-  '/ready',
-  knowledgeBaseController.setReady
-);
-
-// Get knowledge base stats
-router.get(
-  '/stats',
-  knowledgeBaseController.getStats
-);
+router.post('/ready', validateRequest(readySchema), knowledgeBaseController.setReady);
 
 export default router;

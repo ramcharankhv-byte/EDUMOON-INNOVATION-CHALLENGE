@@ -1,26 +1,22 @@
 import { z } from 'zod';
+import { NotificationType } from '@prisma/client';
 
-// Notification creation schema
 export const createNotificationSchema = z.object({
-  title: z.string().min(1, 'Title is required'),
-  message: z.string().min(1, 'Message is required'),
-  type: z.enum([
-    'SYSTEM',
-    'BUSINESS_UPDATE',
-    'AI_READINESS_REPORT',
-    'CHAT_RATING_REQUEST',
-    'SUBSCRIPTION_EXPIRING'
-  ]),
-  isRead: z.boolean().default(false)
+  title: z.string().min(1).max(200),
+  message: z.string().min(1).max(2000),
+  type: z.nativeEnum(NotificationType),
+  isRead: z.boolean().optional(),
+  businessId: z.string().uuid().optional(),
 });
 
-// Notification update schema (for marking as read/unread)
 export const updateNotificationSchema = z.object({
-  isRead: z.boolean()
+  title: z.string().min(1).max(200).optional(),
+  message: z.string().min(1).max(2000).optional(),
+  type: z.nativeEnum(NotificationType).optional(),
+  isRead: z.boolean().optional(),
 });
 
-// Export schemas
 export const notificationValidators = {
   create: createNotificationSchema,
-  update: updateNotificationSchema
+  update: updateNotificationSchema,
 };

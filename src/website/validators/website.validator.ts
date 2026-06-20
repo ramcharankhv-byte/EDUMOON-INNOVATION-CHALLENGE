@@ -1,19 +1,17 @@
 import { z } from 'zod';
 
-// Website URL schema
 export const websiteUrlSchema = z.object({
-  url: z.string().url('Invalid URL')
+  url: z.string().url('Invalid URL'),
 });
 
-// Website update schema
 export const updateWebsiteSchema = z.object({
-  title: z.string().optional(),
-  description: z.string().optional(),
-  faviconUrl: z.string().url('Invalid URL').optional()
+  url: z.string().url().optional(),
+  title: z.string().max(200).nullable().optional(),
+  description: z.string().max(2000).nullable().optional(),
+  faviconUrl: z.string().url().nullable().optional(),
 });
 
-// Export schemas
 export const websiteValidators = {
-  setUrl: websiteUrlSchema,
-  update: updateWebsiteSchema
+  url: websiteUrlSchema,
+  update: updateWebsiteSchema,
 };

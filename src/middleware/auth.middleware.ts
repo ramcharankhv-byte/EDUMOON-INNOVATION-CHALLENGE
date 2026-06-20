@@ -1,39 +1,45 @@
 import { Request, Response, NextFunction } from 'express';
 import { authService } from '../auth/services/auth.service';
-import { logger } from '../../utils/logger';
-import { prisma } from '../../lib/prisma';
+import { prisma } from '../lib/prisma';
+import logger from '../utils/logger';
 
 /**
- * Middleware to authenticate JWT token from cookies
+ * Middleware to authenticate JWT token from cookies.
+ * On success, attaches `req.user` with id/email/role/isVerified.
  */
-export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
+export const authenticate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
   try {
-    const refreshToken = req.cookies.refreshToken;
-
+    const refreshToken = req.cookies?.refreshToken;
     if (!refreshToken) {
-      return res.status(401).json({ error: 'Unauthorized: No refresh token provided' });
+      res.status(401).json({ error: 'Unauthorized: No refresh token provided' });
+      return;
     }
 
-    // Verify refresh token
-    const payload = authService.verifyRefreshToken(refreshToken) as { userId: string };
+    let payload;
+    try {
+      payload = authService.verifyRefreshToken(refreshToken);
+    } catch {
+      res.status(401).json({ error: 'Unauthorized: Invalid refresh token' });
+      return;
+    }
 
-    // Check if token exists in database and is not expired
     const storedToken = await prisma.refreshToken.findFirst({
       where: {
         token: refreshToken,
         userId: payload.userId,
-        expiresAt: {
-          gt: new Date()
-        },
-        revoked: false
-      }
+        expiresAt: { gt: new Date() },
+        revoked: false,
+      },
     });
-
     if (!storedToken) {
-      return res.status(401).json({ error: 'Unauthorized: Invalid or expired refresh token' });
+      res.status(401).json({ error: 'Unauthorized: Invalid or expired refresh token' });
+      return;
     }
 
-    // Get user from database
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
       select: {
@@ -42,20 +48,18 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
         firstName: true,
         lastName: true,
         role: true,
-        isVerified: true
-      }
+        isVerified: true,
+      },
     });
-
     if (!user) {
-      return res.status(401).json({ error: 'Unauthorized: User not found' });
+      res.status(401).json({ error: 'Unauthorized: User not found' });
+      return;
     }
 
-    // Attach user to request object
     req.user = user;
-
     next();
   } catch (error) {
-    logger.error('Authentication error:', error);
-    return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+    logger.error('Authentication error', error);
+    res.status(401).json({ error: 'Unauthorized: Invalid token' });
   }
 };

@@ -1,234 +1,205 @@
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
-import { chatRepository } from './repositories/chat.repository';
-import { businessRepository } from '../business/repositories/business.repository';
-import { logger } from '../../utils/logger';
-import { ChatEvent } from './events/chat.event';
-import { chatListener } from './listeners/chat.listener';
+import { prisma } from '../../lib/prisma';
+import { chatRepository } from '../repositories/chat.repository';
+import { businessRepository } from '../../business/repositories/business.repository';
+import logger from '../../utils/logger';
+import {
+  ChatSessionCreatedEvent,
+  ChatSessionEndedEvent,
+  MessageCreatedEvent,
+} from '../events/chat.event';
+import { chatListener } from '../listeners/chat.listener';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
+import { ChatSession, Message, Visitor } from '@prisma/client';
 
-// Chat service
 export class ChatService {
-  async createChatSession(...args: any[]) { return null as any; }
-  async getChatSessionBySessionToken(...args: any[]) { return null as any; }
-  async getChatSessionsByBusinessId(...args: any[]) { return null as any; }
-  async getChatSessionsByVisitorId(...args: any[]) { return null as any; }
-  async createMessage(...args: any[]) { return null as any; }
-  async getMessagesByChatSessionId(...args: any[]) { return null as any; }
-  async endChatSession(...args: any[]) { return null as any; }
-  async getActiveChatSessionsByBusinessId(...args: any[]) { return null as any; }
-
-  // Create visitor (for anonymous users)
+  // ---------------------------------------------------------------------------
+  // Visitors
+  // ---------------------------------------------------------------------------
   async createVisitor(data: {
     sessionId: string;
     ipAddress?: string;
     userAgent?: string;
     country?: string;
     city?: string;
-  }) {
-    // Check if visitor already exists
+  }): Promise<Visitor> {
     const existingVisitor = await chatRepository.findVisitorBySessionId(data.sessionId);
     if (existingVisitor) {
-      // Update last visit
-      await prisma.visitor.update({
+      return prisma.visitor.update({
         where: { id: existingVisitor.id },
         data: {
           lastVisit: new Date(),
-          visitCount: {
-            increment: 1
-          }
-        }
+          visitCount: { increment: 1 },
+        },
       });
-      return existingVisitor;
     }
 
-    // Create new visitor
-    const visitor = await chatRepository.createVisitor(data);
-
-    // Emit visitor created event (if needed)
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-
-    return visitor;
+    return chatRepository.createVisitor(data);
   }
 
-  // Create chat session
-  async createChatSession(visitorId: string, businessId: string) {
-    // Verify business exists
+  // ---------------------------------------------------------------------------
+  // Chat sessions
+  // ---------------------------------------------------------------------------
+  async createChatSession(visitorId: string, businessId: string): Promise<ChatSession> {
     const business = await businessRepository.findById(businessId);
     if (!business) {
       throw new Error('Business not found');
     }
 
-    // Generate unique session token
     const sessionToken = uuidv4();
 
-    // Create chat session
     const chatSession = await chatRepository.createChatSession({
       visitorId,
       businessId,
-      sessionToken
+      sessionToken,
     });
 
-    // Emit chat session created event
-    const chatSessionCreatedEvent = new ChatEvent.ChatSessionCreatedEvent(
+    const event = new ChatSessionCreatedEvent(
       chatSession.id,
       visitorId,
       businessId,
-      sessionToken
+      sessionToken,
     );
-
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await chatListener.onChatSessionCreated(chatSessionCreatedEvent);
+    await chatListener.onChatSessionCreated(event);
 
     return chatSession;
   }
 
-  // Get chat session by ID
-  async getChatSessionById(id: string) {
-    const chatSession = await chatRepository.findById(id);
-    if (!chatSession) {
+  async getChatSessionById(id: string): Promise<ChatSession> {
+    const session = await chatRepository.findById(id);
+    if (!session) {
       throw new Error('Chat session not found');
     }
-    return chatSession;
+    return session;
   }
 
-  // Get chat session by session token
-  async getChatSessionBySessionToken(sessionToken: string) {
-    const chatSession = await chatRepository.findBySessionToken(sessionToken);
-    if (!chatSession) {
+  async getChatSessionBySessionToken(sessionToken: string): Promise<ChatSession> {
+    const session = await chatRepository.findBySessionToken(sessionToken);
+    if (!session) {
       throw new Error('Chat session not found');
     }
-    return chatSession;
+    return session;
   }
 
-  // Get chat sessions by business ID
-  async getChatSessionsByBusinessId(businessId: string) {
-    // Verify business exists
+  async getChatSessionsByBusinessId(businessId: string): Promise<ChatSession[]> {
     const business = await businessRepository.findById(businessId);
     if (!business) {
       throw new Error('Business not found');
     }
-
     return chatRepository.findByBusinessId(businessId);
   }
 
-  // Get chat sessions by visitor ID
-  async getChatSessionsByVisitorId(visitorId: string) {
+  async getChatSessionsByVisitorId(visitorId: string): Promise<ChatSession[]> {
     return chatRepository.findByVisitorId(visitorId);
   }
 
-  // Create message
-  async createMessage(chatSessionId: string, content: string, isFromUser: boolean = true) {
-    // Check if chat session exists
-    const chatSession = await chatRepository.findById(chatSessionId);
-    if (!chatSession) {
+  async getActiveChatSessionsByBusinessId(businessId: string): Promise<ChatSession[]> {
+    const business = await businessRepository.findById(businessId);
+    if (!business) {
+      throw new Error('Business not found');
+    }
+    return prisma.chatSession.findMany({
+      where: { businessId, endedAt: null },
+      orderBy: { startedAt: 'desc' },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Messages
+  // ---------------------------------------------------------------------------
+  async createMessage(
+    chatSessionId: string,
+    content: string,
+    isFromUser = true,
+  ): Promise<Message> {
+    const session = await chatRepository.findById(chatSessionId);
+    if (!session) {
       throw new Error('Chat session not found');
     }
 
-    // Create message
     const message = await chatRepository.createMessage({
       chatSessionId,
       content,
-      isFromUser
+      isFromUser,
     });
 
-    // Update message count for chat session
     const messageCount = await chatRepository.getMessageCountByChatSessionId(chatSessionId);
     await chatRepository.updateMessageCount(chatSessionId, messageCount);
 
-    // Emit message created event
-    const messageCreatedEvent = new ChatEvent.MessageCreatedEvent(
+    const event = new MessageCreatedEvent(
       message.id,
       chatSessionId,
       content,
-      isFromUser
+      isFromUser,
     );
+    await chatListener.onMessageCreated(event);
 
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await chatListener.onMessageCreated(messageCreatedEvent);
-
-    // AI SERVICE PROXY LOGIC
+    // Forward to AI service for bot responses.
     if (isFromUser) {
-      try {
-        const aiServiceUrl = process.env.EXTERNAL_LLM_SERVICE_URL || 'http://localhost:8000';
-        // Forward message to FastAPI AI Service
-        const aiResponse = await axios.post(`${aiServiceUrl}/chat`, {
-          session_id: chatSessionId,
-          message: content
-        });
-        
-        // Save AI response as a new message
-        if (aiResponse.data && aiResponse.data.response) {
-          await chatRepository.createMessage({
-            chatSessionId,
-            content: aiResponse.data.response,
-            isFromUser: false
-          });
-          // Update count again
-          const newCount = await chatRepository.getMessageCountByChatSessionId(chatSessionId);
-          await chatRepository.updateMessageCount(chatSessionId, newCount);
-        }
-      } catch (err) {
-        logger.error('Failed to communicate with AI Service', err);
-      }
+      await this.proxyToAiService(chatSessionId, content);
     }
 
     return message;
   }
 
-  // Get messages for chat session
-  async getMessagesByChatSessionId(chatSessionId: string) {
+  private async proxyToAiService(chatSessionId: string, content: string): Promise<void> {
+    try {
+      const aiServiceUrl = process.env.EXTERNAL_LLM_SERVICE_URL || 'http://localhost:8000';
+      const aiResponse = await axios.post<{ response?: string }>(
+        `${aiServiceUrl}/chat`,
+        {
+          session_id: chatSessionId,
+          message: content,
+        },
+        { timeout: 10_000 },
+      );
+
+      if (aiResponse.data?.response) {
+        await chatRepository.createMessage({
+          chatSessionId,
+          content: aiResponse.data.response,
+          isFromUser: false,
+        });
+        const newCount = await chatRepository.getMessageCountByChatSessionId(chatSessionId);
+        await chatRepository.updateMessageCount(chatSessionId, newCount);
+      }
+    } catch (err) {
+      logger.error('Failed to communicate with AI Service', err);
+    }
+  }
+
+  async getMessagesByChatSessionId(chatSessionId: string): Promise<Message[]> {
     return chatRepository.getMessagesByChatSessionId(chatSessionId);
   }
 
-  // End chat session
-  async endChatSession(chatSessionId: string, satisfactionScore?: number, feedback?: string) {
-    // Check if chat session exists
-    const chatSession = await chatRepository.findById(chatSessionId);
-    if (!chatSession) {
+  // ---------------------------------------------------------------------------
+  // End session
+  // ---------------------------------------------------------------------------
+  async endChatSession(
+    chatSessionId: string,
+    satisfactionScore?: number,
+    feedback?: string,
+  ): Promise<ChatSession> {
+    const session = await chatRepository.findById(chatSessionId);
+    if (!session) {
       throw new Error('Chat session not found');
     }
 
-    // End chat session
-    const endedSession = await chatRepository.endChatSession(chatSessionId, satisfactionScore, feedback);
-
-    // Emit chat session ended event
-    const chatSessionEndedEvent = new ChatEvent.ChatSessionEndedEvent(
+    const ended = await chatRepository.endChatSession(
       chatSessionId,
       satisfactionScore,
-      feedback
+      feedback,
     );
 
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await chatListener.onChatSessionEnded(chatSessionEndedEvent);
+    const event = new ChatSessionEndedEvent(
+      chatSessionId,
+      satisfactionScore ?? null,
+      feedback ?? null,
+    );
+    await chatListener.onChatSessionEnded(event);
 
-    return endedSession;
-  }
-
-  // Get active chat sessions for business (sessions that haven't ended)
-  async getActiveChatSessionsByBusinessId(businessId: string) {
-    // Verify business exists
-    const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
-
-    return prisma.chatSession.findMany({
-      where: {
-        businessId,
-        endedAt: null
-      },
-      orderBy: { startedAt: 'desc' }
-    });
+    return ended;
   }
 }
 
-// Export singleton instance
 export const chatService = new ChatService();

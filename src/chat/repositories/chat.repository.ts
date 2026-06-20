@@ -3,18 +3,6 @@ import { ChatSession, Message, Visitor } from '@prisma/client';
 
 // Chat repository
 export class ChatRepository {
-  async findVisitorBySessionId(...args: any[]) { return null as any; }
-  async createVisitor(...args: any[]) { return null as any; }
-  async createChatSession(...args: any[]) { return null as any; }
-  async findBySessionToken(...args: any[]) { return null as any; }
-  async findByBusinessId(...args: any[]) { return null as any; }
-  async findByVisitorId(...args: any[]) { return null as any; }
-  async createMessage(...args: any[]) { return null as any; }
-  async getMessageCountByChatSessionId(...args: any[]) { return null as any; }
-  async updateMessageCount(...args: any[]) { return null as any; }
-  async getMessagesByChatSessionId(...args: any[]) { return null as any; }
-  async endChatSession(...args: any[]) { return null as any; }
-
   // Find chat session by ID
   async findById(id: string): Promise<ChatSession | null> {
     return prisma.chatSession.findUnique({

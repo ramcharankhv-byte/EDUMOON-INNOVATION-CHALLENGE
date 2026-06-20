@@ -1,207 +1,129 @@
 import { Request, Response, NextFunction } from 'express';
+import { businessRepository } from '../../business/repositories/business.repository';
 import { websiteUrlSchema, updateWebsiteSchema } from '../validators/website.validator';
-import { websiteService } from './services/website.service';
-import { logger } from '../../utils/logger';
-import { authenticate } from '../../middleware/auth.middleware';
+import { websiteService } from '../services/website.service';
 
-// Website controller
+async function resolveBusiness(req: Request): Promise<string | { error: string; status: number }> {
+  const userId = req.user?.id;
+  if (!userId) return { error: 'Unauthorized', status: 401 };
+  const business = await businessRepository.findByUserId(userId);
+  if (!business) return { error: 'Business not found', status: 404 };
+  return business.id;
+}
+
 export class WebsiteController {
-  async setUrl(...args: any[]) { return null as any; }
-  async getByBusinessId(...args: any[]) { return null as any; }
-  async update(...args: any[]) { return null as any; }
-  async delete(...args: any[]) { return null as any; }
-  async crawl(...args: any[]) { return null as any; }
-  async recrawl(...args: any[]) { return null as any; }
-  async getPages(...args: any[]) { return null as any; }
-
-  // Set website URL
+  // POST /api/website/url
   async setUrl(req: Request, res: Response, next: NextFunction) {
     try {
-      // Validate input
-      const validatedData = websiteUrlSchema.parse(req.body);
-
-      // Get user ID from authenticated request
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Set website URL
-      const website = await websiteService.setWebsiteUrl(business.id, validatedData.url);
-
-      return res.status(200).json({
-        message: 'Website URL set successfully',
-        website
-      });
+      const body = websiteUrlSchema.parse(req.body);
+      const website = await websiteService.setWebsiteUrl(resolved, body.url);
+      return res.status(200).json({ message: 'Website URL set successfully', website });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get website by business ID
+  // GET /api/website
   async getByBusinessId(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Get website
-      const website = await websiteService.getWebsiteByBusinessId(business.id);
-
-      return res.status(200).json({
-        website
-      });
+      const website = await websiteService.getWebsiteByBusinessId(resolved);
+      return res.status(200).json({ website });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Update website information
+  // PUT /api/website
   async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Validate input
-      const validatedData = updateWebsiteSchema.parse(req.body);
-
-      // Update website
-      const website = await websiteService.updateWebsite(business.id, validatedData);
-
-      return res.status(200).json({
-        message: 'Website updated successfully',
-        website
+      const body = updateWebsiteSchema.parse(req.body);
+      const website = await websiteService.updateWebsite(resolved, {
+        url: body.url,
+        title: body.title ?? undefined,
+        description: body.description ?? undefined,
+        faviconUrl: body.faviconUrl ?? undefined,
       });
+      return res.status(200).json({ message: 'Website updated successfully', website });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Delete website
+  // DELETE /api/website
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Delete website
-      await websiteService.deleteWebsite(business.id);
-
-      return res.status(200).json({
-        message: 'Website deleted successfully'
-      });
+      await websiteService.deleteWebsite(resolved);
+      return res.status(200).json({ message: 'Website deleted successfully' });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Crawl website
+  // POST /api/website/crawl
   async crawl(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Crawl website
-      const result = await websiteService.crawlWebsite(business.id);
-
+      const result = await websiteService.crawlWebsite(resolved);
       return res.status(200).json({
         message: 'Website crawled successfully',
         website: result.website,
-        pagesCrawled: result.pagesCrawled
+        pagesCrawled: result.pagesCrawled,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Recrawl website
+  // POST /api/website/recrawl
   async recrawl(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Recrawl website
-      const result = await websiteService.recrawlWebsite(business.id);
-
+      const result = await websiteService.recrawlWebsite(resolved);
       return res.status(200).json({
         message: 'Website recrawled successfully',
         website: result.website,
-        pagesCrawled: result.pagesCrawled
+        pagesCrawled: result.pagesCrawled,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get website pages
+  // GET /api/website/pages
   async getPages(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      const resolved = await resolveBusiness(req);
+      if (typeof resolved !== 'string') {
+        return res.status(resolved.status).json({ error: resolved.error });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
-
-      // Get website pages
-      const pages = await websiteService.getWebsitePages(business.id);
-
-      return res.status(200).json({
-        pages
-      });
+      const pages = await websiteService.getWebsitePages(resolved);
+      return res.status(200).json({ pages });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 }
 
-// Export singleton instance
 export const websiteController = new WebsiteController();

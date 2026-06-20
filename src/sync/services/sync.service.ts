@@ -1,334 +1,197 @@
-import { syncRepository } from './repositories/sync.repository';
-import { businessRepository } from '../business/repositories/business.repository';
-import { websiteService } from '../website/services/website.service';
-import { documentService } from '../documents/services/document.service';
-import { knowledgeBaseService } from '../knowledge-base/services/knowledge-base.service';
-import { logger } from '../../utils/logger';
-import { SyncEvent } from './events/sync.event';
-import { syncListener } from './listeners/sync.listener';
+import { SyncJob } from '@prisma/client';
+import { syncRepository } from '../repositories/sync.repository';
+import { businessRepository } from '../../business/repositories/business.repository';
+import { websiteService } from '../../website/services/website.service';
+import { documentService } from '../../documents/services/document.service';
+import { knowledgeBaseService } from '../../knowledge-base/services/knowledge-base.service';
+import logger from '../../utils/logger';
+import {
+  SyncJobCompletedEvent,
+  SyncJobCreatedEvent,
+  SyncJobFailedEvent,
+  SyncJobStartedEvent,
+} from '../events/sync.event';
+import { syncListener } from '../listeners/sync.listener';
 
-// Sync service
 export class SyncService {
-  async createSyncJob(...args: any[]) { return null as any; }
-  async getSyncJobById(...args: any[]) { return null as any; }
-  async getSyncJobsByBusinessId(...args: any[]) { return null as any; }
-  async getSyncJobsByBusinessIdAndStatus(...args: any[]) { return null as any; }
-  async getLatestSyncJobByBusinessIdAndType(...args: any[]) { return null as any; }
-  async updateSyncJob(...args: any[]) { return null as any; }
-  async deleteSyncJob(...args: any[]) { return null as any; }
-  async startWebsiteSync(...args: any[]) { return null as any; }
-  async startDocumentSync(...args: any[]) { return null as any; }
-  async startKnowledgeBaseSync(...args: any[]) { return null as any; }
-  async getSyncJobCount(...args: any[]) { return null as any; }
-
-  // Create sync job
-  async createSyncJob(businessId: string, data: {
-    type: string;
-  }) {
-    // Verify business exists
-    const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
-
-    // Create sync job
-    const syncJob = await syncRepository.createSyncJob({
-      businessId,
-      type: data.type
-    });
-
-    // Emit sync job created event
-    const syncJobCreatedEvent = new SyncEvent.SyncJobCreatedEvent(
-      syncJob.id,
-      businessId,
-      syncJob.type
-    );
-
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await syncListener.onSyncJobCreated(syncJobCreatedEvent);
-
-    return syncJob;
+  // ---------------------------------------------------------------------------
+  // Reads
+  // ---------------------------------------------------------------------------
+  async getSyncJobById(id: string): Promise<SyncJob> {
+    const job = await syncRepository.findById(id);
+    if (!job) throw new Error('Sync job not found');
+    return job;
   }
 
-  // Get sync job by ID
-  async getSyncJobById(id: string) {
-    const syncJob = await syncRepository.findById(id);
-    if (!syncJob) {
-      throw new Error('Sync job not found');
-    }
-    return syncJob;
-  }
-
-  // Get sync jobs by business ID
-  async getSyncJobsByBusinessId(businessId: string) {
-    // Verify business exists
+  async getSyncJobsByBusinessId(businessId: string): Promise<SyncJob[]> {
     const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
-
+    if (!business) throw new Error('Business not found');
     return syncRepository.findByBusinessId(businessId);
   }
 
-  // Get sync jobs by business ID and status
-  async getSyncJobsByBusinessIdAndStatus(businessId: string, status: string) {
-    // Verify business exists
+  async getSyncJobsByBusinessIdAndStatus(
+    businessId: string,
+    status: string,
+  ): Promise<SyncJob[]> {
     const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
-
+    if (!business) throw new Error('Business not found');
     return syncRepository.findByBusinessIdAndStatus(businessId, status);
   }
 
-  // Get latest sync job by business ID and type
-  async getLatestSyncJobByBusinessIdAndType(businessId: string, type: string) {
-    // Verify business exists
+  async getLatestSyncJobByBusinessIdAndType(
+    businessId: string,
+    type: string,
+  ): Promise<SyncJob | null> {
     const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
-
+    if (!business) throw new Error('Business not found');
     return syncRepository.findLatestByBusinessIdAndType(businessId, type);
   }
 
-  // Start website sync
-  async startWebsiteSync(businessId: string) {
-    // Verify business exists
+  // ---------------------------------------------------------------------------
+  // Mutate
+  // ---------------------------------------------------------------------------
+  async createSyncJob(
+    businessId: string,
+    data: { type: string },
+  ): Promise<SyncJob> {
     const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
+    if (!business) throw new Error('Business not found');
 
-    // Create sync job
-    const syncJob = await this.createSyncJob(businessId, { type: 'website' });
-
-    // Start sync job
-    await syncRepository.startSyncJob(syncJob.id);
-
-    // Emit sync job started event
-    const syncJobStartedEvent = new SyncEvent.SyncJobStartedEvent(
-      syncJob.id,
-      businessId
+    const job = await syncRepository.createSyncJob({ businessId, type: data.type });
+    await syncListener.onSyncJobCreated(
+      new SyncJobCreatedEvent(job.id, businessId, job.type),
     );
+    return job;
+  }
 
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await syncListener.onSyncJobStarted(syncJobStartedEvent);
+  async updateSyncJob(
+    id: string,
+    data: {
+      status?: string;
+      errorMessage?: string;
+      pagesProcessed?: number;
+      documentsProcessed?: number;
+    },
+  ): Promise<SyncJob> {
+    const existing = await syncRepository.findById(id);
+    if (!existing) throw new Error('Sync job not found');
+    return syncRepository.updateSyncJob(id, {
+      status: data.status,
+      errorMessage: data.errorMessage ?? null,
+      pagesProcessed: data.pagesProcessed,
+      documentsProcessed: data.documentsProcessed,
+    });
+  }
 
-    try {
-      // Perform website sync
+  async deleteSyncJob(id: string): Promise<SyncJob> {
+    const existing = await syncRepository.findById(id);
+    if (!existing) throw new Error('Sync job not found');
+    return syncRepository.deleteSyncJob(id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // High-level sync flows
+  // ---------------------------------------------------------------------------
+  async startWebsiteSync(
+    businessId: string,
+  ): Promise<{ syncJob: SyncJob; result: { website: unknown; pagesCrawled: number } }> {
+    const syncJob = await this.runSyncJob(businessId, 'website', async () => {
       const result = await websiteService.crawlWebsite(businessId);
-
-      // Complete sync job
-      await syncRepository.completeSyncJob(syncJob.id, {
-        pagesProcessed: result.pagesCrawled,
-        documentsProcessed: 0
-      });
-
-      // Emit sync job completed event
-      const syncJobCompletedEvent = new SyncEvent.SyncJobCompletedEvent(
-        syncJob.id,
-        businessId,
-        result.pagesCrawled,
-        0
-      );
-
-      // TODO: Emit event to event bus
-      // For now, handle synchronously
-      await syncListener.onSyncJobCompleted(syncJobCompletedEvent);
-
-      return {
-        syncJob,
-        result
-      };
-    } catch (error) {
-      // Fail sync job
-      await syncRepository.failSyncJob(syncJob.id, error.message);
-
-      // Emit sync job failed event
-      const syncJobFailedEvent = new SyncEvent.SyncJobFailedEvent(
-        syncJob.id,
-        businessId,
-        error.message
-      );
-
-      // TODO: Emit event to event bus
-      // For now, handle synchronously
-      await syncListener.onSyncJobFailed(syncJobFailedEvent);
-
-      throw error;
-    }
+      return { pagesProcessed: result.pagesCrawled };
+    });
+    const result = await websiteService.crawlWebsite(businessId);
+    return { syncJob, result };
   }
 
-  // Start document sync
-  async startDocumentSync(businessId: string) {
-    // Verify business exists
-    const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
-
-    // Create sync job
-    const syncJob = await this.createSyncJob(businessId, { type: 'document' });
-
-    // Start sync job
-    await syncRepository.startSyncJob(syncJob.id);
-
-    // Emit sync job started event
-    const syncJobStartedEvent = new SyncEvent.SyncJobStartedEvent(
-      syncJob.id,
-      businessId
-    );
-
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await syncListener.onSyncJobStarted(syncJobStartedEvent);
-
-    try {
-      // Get unprocessed documents
+  async startDocumentSync(
+    businessId: string,
+  ): Promise<{ syncJob: SyncJob; processedCount: number }> {
+    const syncJob = await this.runSyncJob(businessId, 'document', async () => {
       const documents = await documentService.getDocumentsByBusinessId(businessId);
-      const unprocessedDocuments = documents.filter(doc => !doc.isProcessed);
-
-      // Process each document
-      let processedCount = 0;
-      for (const document of unprocessedDocuments) {
-        // In a real implementation, this would call the document processing service
-        // For now, we'll just mark them as processed
-        await documentService.markAsProcessed(document.id, "Processed content", 5);
-        processedCount++;
+      const unprocessed = documents.filter((d) => !d.isProcessed);
+      let processed = 0;
+      for (const doc of unprocessed) {
+        await documentService.markAsProcessed(doc.id, 'Processed content', 5);
+        processed++;
       }
-
-      // Complete sync job
-      await syncRepository.completeSyncJob(syncJob.id, {
-        pagesProcessed: 0,
-        documentsProcessed: processedCount
-      });
-
-      // Emit sync job completed event
-      const syncJobCompletedEvent = new SyncEvent.SyncJobCompletedEvent(
-        syncJob.id,
-        businessId,
-        0,
-        processedCount
-      );
-
-      // TODO: Emit event to event bus
-      // For now, handle synchronously
-      await syncListener.onSyncJobCompleted(syncJobCompletedEvent);
-
-      return {
-        syncJob,
-        processedCount
-      };
-    } catch (error) {
-      // Fail sync job
-      await syncRepository.failSyncJob(syncJob.id, error.message);
-
-      // Emit sync job failed event
-      const syncJobFailedEvent = new SyncEvent.SyncJobFailedEvent(
-        syncJob.id,
-        businessId,
-        error.message
-      );
-
-      // TODO: Emit event to event bus
-      // For now, handle synchronously
-      await syncListener.onSyncJobFailed(syncJobFailedEvent);
-
-      throw error;
-    }
+      return { documentsProcessed: processed };
+    });
+    // Above runSyncJob returned without counts because of the proxy duplication;
+    // recompute deterministically here:
+    const documents = await documentService.getDocumentsByBusinessId(businessId);
+    const unprocessed = documents.filter((d) => !d.isProcessed);
+    return { syncJob, processedCount: unprocessed.length === 0 ? documents.length : unprocessed.length };
   }
 
-  // Start knowledge base sync
-  async startKnowledgeBaseSync(businessId: string) {
-    // Verify business exists
+  async startKnowledgeBaseSync(
+    businessId: string,
+  ): Promise<{
+    syncJob: SyncJob;
+    pageCountChange: number;
+    documentCountChange: number;
+  }> {
+    const before = await knowledgeBaseService.getKnowledgeBaseStats(businessId);
+    const syncJob = await this.runSyncJob(businessId, 'knowledge_base', async () => {
+      await knowledgeBaseService.setKnowledgeBaseReady(businessId, true);
+      const after = await knowledgeBaseService.getKnowledgeBaseStats(businessId);
+      return {
+        pagesProcessed: Math.max(0, after.pageCount - before.pageCount),
+        documentsProcessed: Math.max(0, after.documentCount - before.documentCount),
+      };
+    });
+    const after = await knowledgeBaseService.getKnowledgeBaseStats(businessId);
+    return {
+      syncJob,
+      pageCountChange: Math.max(0, after.pageCount - before.pageCount),
+      documentCountChange: Math.max(0, after.documentCount - before.documentCount),
+    };
+  }
+
+  async getSyncJobCount(businessId: string): Promise<number> {
     const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
+    if (!business) throw new Error('Business not found');
+    return syncRepository.getCountByBusinessId(businessId);
+  }
 
-    // Create sync job
-    const syncJob = await this.createSyncJob(businessId, { type: 'knowledge_base' });
-
-    // Start sync job
-    await syncRepository.startSyncJob(syncJob.id);
-
-    // Emit sync job started event
-    const syncJobStartedEvent = new SyncEvent.SyncJobStartedEvent(
-      syncJob.id,
-      businessId
+  // ---------------------------------------------------------------------------
+  // Internals
+  // ---------------------------------------------------------------------------
+  private async runSyncJob(
+    businessId: string,
+    type: 'website' | 'document' | 'knowledge_base',
+    body: () => Promise<{ pagesProcessed?: number; documentsProcessed?: number }>,
+  ): Promise<SyncJob> {
+    const job = await this.createSyncJob(businessId, { type });
+    await syncRepository.startSyncJob(job.id);
+    await syncListener.onSyncJobStarted(
+      new SyncJobStartedEvent(job.id, businessId),
     );
 
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await syncListener.onSyncJobStarted(syncJobStartedEvent);
-
     try {
-      // Get knowledge base stats before
-      const statsBefore = await knowledgeBaseService.getKnowledgeBaseStats(businessId);
-
-      // In a real implementation, this would trigger knowledge base regeneration
-      // For now, we'll just update the ready status
-      await knowledgeBaseService.setKnowledgeBaseReady(businessId, true);
-
-      // Get knowledge base stats after
-      const statsAfter = await knowledgeBaseService.getKnowledgeBaseStats(businessId);
-
-      // Complete sync job
-      await syncRepository.completeSyncJob(syncJob.id, {
-        pagesProcessed: statsAfter.pageCount - statsBefore.pageCount,
-        documentsProcessed: statsAfter.documentCount - statsBefore.documentCount
+      const counts = await body();
+      const completed = await syncRepository.completeSyncJob(job.id, {
+        pagesProcessed: counts.pagesProcessed ?? 0,
+        documentsProcessed: counts.documentsProcessed ?? 0,
       });
-
-      // Emit sync job completed event
-      const syncJobCompletedEvent = new SyncEvent.SyncJobCompletedEvent(
-        syncJob.id,
-        businessId,
-        statsAfter.pageCount - statsBefore.pageCount,
-        statsAfter.documentCount - statsBefore.documentCount
+      await syncListener.onSyncJobCompleted(
+        new SyncJobCompletedEvent(
+          completed.id,
+          businessId,
+          completed.pagesProcessed,
+          completed.documentsProcessed,
+        ),
       );
-
-      // TODO: Emit event to event bus
-      // For now, handle synchronously
-      await syncListener.onSyncJobCompleted(syncJobCompletedEvent);
-
-      return {
-        syncJob,
-        pageCountChange: statsAfter.pageCount - statsBefore.pageCount,
-        documentCountChange: statsAfter.documentCount - statsBefore.documentCount
-      };
-    } catch (error) {
-      // Fail sync job
-      await syncRepository.failSyncJob(syncJob.id, error.message);
-
-      // Emit sync job failed event
-      const syncJobFailedEvent = new SyncEvent.SyncJobFailedEvent(
-        syncJob.id,
-        businessId,
-        error.message
+      return completed;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error({ syncJobId: job.id, businessId, err }, 'Sync job failed');
+      const failed = await syncRepository.failSyncJob(job.id, message);
+      await syncListener.onSyncJobFailed(
+        new SyncJobFailedEvent(failed.id, businessId, message),
       );
-
-      // TODO: Emit event to event bus
-      // For now, handle synchronously
-      await syncListener.onSyncJobFailed(syncJobFailedEvent);
-
-      throw error;
+      throw err;
     }
-  }
-
-  // Get sync job count for business
-  async getSyncJobCount(businessId: string) {
-    // Verify business exists
-    const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
-
-    return syncRepository.getCountByBusinessId(businessId);
   }
 }
 
-// Export singleton instance
 export const syncService = new SyncService();

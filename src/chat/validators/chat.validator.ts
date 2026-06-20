@@ -1,19 +1,26 @@
 import { z } from 'zod';
 
-// Chat session creation schema
+// Chat session creation schema — visitor id is optional because it's
+// normally derived from a cookie / header.
 export const createChatSessionSchema = z.object({
-  // Visitor ID would come from cookie or header in real implementation
-  visitorId: z.string().optional()
+  visitorId: z.string().min(1).optional(),
+  businessId: z.string().min(1).optional(),
 });
 
 // Chat message creation schema
 export const createChatMessageSchema = z.object({
   content: z.string().min(1, 'Message content is required'),
-  isFromUser: z.boolean().default(true)
+  isFromUser: z.boolean().default(true),
 });
 
-// Export schemas
+// End-session schema (used when a visitor finishes a chat and submits feedback)
+export const endChatSessionSchema = z.object({
+  satisfactionScore: z.number().int().min(1).max(5).optional(),
+  feedback: z.string().max(2000).optional(),
+});
+
 export const chatValidators = {
   createSession: createChatSessionSchema,
-  createMessage: createChatMessageSchema
+  createMessage: createChatMessageSchema,
+  endSession: endChatSessionSchema,
 };

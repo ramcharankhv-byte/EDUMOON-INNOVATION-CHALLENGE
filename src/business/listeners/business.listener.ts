@@ -1,8 +1,9 @@
-import { logger } from '../../utils/logger';
-import { prisma } from '../../lib/prisma';
-import { BusinessCreatedEvent } from './business.event';
-import { BusinessUpdatedEvent } from './business.event';
-import { BusinessDeletedEvent } from './business.event';
+import logger from '../../utils/logger';
+import {
+  BusinessCreatedEvent,
+  BusinessDeletedEvent,
+  BusinessUpdatedEvent,
+} from '../events/business.event';
 
 // Business listeners for handling side effects
 export class BusinessListener {

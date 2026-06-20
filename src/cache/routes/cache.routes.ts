@@ -1,8 +1,22 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { ZodSchema } from 'zod';
 import { cacheController } from '../controllers/cache.controller';
 import { setCacheSchema, getCacheSchema, deleteCacheSchema } from '../validators/cache.validator';
 import { authenticate } from '../../middleware/auth.middleware';
 import { authorize } from '../../middleware/authorization.middleware';
+
+// Local validation helper. Defined before use to avoid the TS2448
+// "used before declaration" error.
+function validateRequest(schema: ZodSchema) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      schema.parse({ ...req.body, ...req.params, ...req.query });
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+}
 
 const router = Router();
 
@@ -13,59 +27,47 @@ router.use(authenticate);
 router.post(
   '/set',
   validateRequest(setCacheSchema),
-  cacheController.set
+  cacheController.set,
 );
 
 // Get value from cache
 router.get(
   '/get/:key',
   validateRequest(getCacheSchema),
-  cacheController.get
+  cacheController.get,
 );
 
 // Delete value from cache
 router.delete(
   '/del/:key',
   validateRequest(deleteCacheSchema),
-  cacheController.del
+  cacheController.del,
 );
 
 // Check if key exists in cache
 router.get(
   '/exists/:key',
-  cacheController.exists
+  cacheController.exists,
 );
 
-// Get cache info
+// Get cache info (admin only)
 router.get(
   '/info',
-  authorize(['ADMIN']), // Only admin can view cache info
-  cacheController.info
+  authorize(['ADMIN']),
+  cacheController.info,
 );
 
-// Flush all cache (use with caution!)
+// Flush all cache (admin only — destructive)
 router.post(
   '/flushall',
-  authorize(['ADMIN']), // Only admin can flush cache
-  cacheController.flushall
+  authorize(['ADMIN']),
+  cacheController.flushall,
 );
 
 // Get TTL for key
 router.get(
   '/ttl/:key',
-  cacheController.ttl
+  cacheController.ttl,
 );
-
-// Helper middleware for validation
-function validateRequest(schema: any) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    try {
-      schema.parse({ ...req.body, ...req.params, ...req.query });
-      next();
-    } catch (error) {
-      next(error);
-    }
-  };
-}
 
 export default router;

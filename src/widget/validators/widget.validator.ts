@@ -1,25 +1,23 @@
 import { z } from 'zod';
+import { Position, Theme } from '@prisma/client';
 
-// Widget creation schema
 export const createWidgetSchema = z.object({
-  title: z.string().default('AI Assistant'),
-  theme: z.enum(['LIGHT', 'DARK', 'AUTO']).default('LIGHT'),
-  position: z.enum(['BOTTOM_RIGHT', 'BOTTOM_LEFT', 'TOP_RIGHT', 'TOP_LEFT']).default('BOTTOM_RIGHT'),
-  isEnabled: z.boolean().default(true),
-  customCss: z.string().optional()
-});
-
-// Widget update schema
-export const updateWidgetSchema = z.object({
-  title: z.string().optional(),
-  theme: z.enum(['LIGHT', 'DARK', 'AUTO']).optional(),
-  position: z.enum(['BOTTOM_RIGHT', 'BOTTOM_LEFT', 'TOP_RIGHT', 'TOP_LEFT']).optional(),
+  title: z.string().min(1).max(100).optional(),
+  theme: z.nativeEnum(Theme).optional(),
+  position: z.nativeEnum(Position).optional(),
   isEnabled: z.boolean().optional(),
-  customCss: z.string().optional()
+  customCss: z.string().max(10_000).optional(),
 });
 
-// Export schemas
+export const updateWidgetSchema = z.object({
+  title: z.string().min(1).max(100).optional(),
+  theme: z.nativeEnum(Theme).optional(),
+  position: z.nativeEnum(Position).optional(),
+  isEnabled: z.boolean().optional(),
+  customCss: z.string().max(10_000).nullable().optional(),
+});
+
 export const widgetValidators = {
   create: createWidgetSchema,
-  update: updateWidgetSchema
+  update: updateWidgetSchema,
 };

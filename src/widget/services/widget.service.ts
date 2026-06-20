@@ -1,132 +1,78 @@
-import { widgetRepository } from './repositories/widget.repository';
-import { businessRepository } from '../business/repositories/business.repository';
-import { logger } from '../../utils/logger';
-import { WidgetEvent } from './events/widget.event';
-import { widgetListener } from './listeners/widget.listener';
+import { Widget, Position, Theme } from '@prisma/client';
+import { widgetRepository } from '../repositories/widget.repository';
+import { businessRepository } from '../../business/repositories/business.repository';
+import {
+  WidgetCreatedEvent,
+  WidgetDeletedEvent,
+  WidgetUpdatedEvent,
+} from '../events/widget.event';
+import { widgetListener } from '../listeners/widget.listener';
 
-// Widget service
+export interface CreateWidgetInput {
+  title?: string;
+  theme?: Theme;
+  position?: Position;
+  isEnabled?: boolean;
+  customCss?: string;
+}
+
+export type UpdateWidgetInput = Partial<CreateWidgetInput>;
+
 export class WidgetService {
-  async getWidgetByBusinessId(...args: any[]) { return null as any; }
-  async createWidget(...args: any[]) { return null as any; }
-  async updateWidget(...args: any[]) { return null as any; }
-  async deleteWidget(...args: any[]) { return null as any; }
-
-  // Get widget for business
-  async getWidgetByBusinessId(businessId: string) {
-    // Verify business exists
+  async getWidgetByBusinessId(businessId: string): Promise<Widget> {
     const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
+    if (!business) throw new Error('Business not found');
 
-    let widget = await widgetRepository.findByBusinessId(businessId);
-
-    // If widget doesn't exist, create a default one
-    if (!widget) {
-      widget = await widgetRepository.createWidget({
-        businessId
-      });
-    }
-
-    return widget;
+    const existing = await widgetRepository.findByBusinessId(businessId);
+    if (existing) return existing;
+    return widgetRepository.createWidget({ businessId });
   }
 
-  // Create widget for business
-  async createWidget(businessId: string, data: {
-    title?: string;
-    theme?: string;
-    position?: string;
-    isEnabled?: boolean;
-    customCss?: string;
-  }) {
-    // Verify business exists
+  async createWidget(businessId: string, data: CreateWidgetInput): Promise<Widget> {
     const business = await businessRepository.findById(businessId);
-    if (!business) {
-      throw new Error('Business not found');
-    }
+    if (!business) throw new Error('Business not found');
 
-    // Check if widget already exists
     const existing = await widgetRepository.findByBusinessId(businessId);
-    if (existing) {
-      throw new Error('Widget already exists for this business');
-    }
+    if (existing) throw new Error('Widget already exists for this business');
 
-    // Create widget
     const widget = await widgetRepository.createWidget({
       businessId,
       title: data.title,
       theme: data.theme,
       position: data.position,
       isEnabled: data.isEnabled,
-      customCss: data.customCss
+      customCss: data.customCss ?? null,
     });
-
-    // Emit widget created event
-    const widgetCreatedEvent = new WidgetEvent.WidgetCreatedEvent(
-      widget.id,
-      businessId
+    await widgetListener.onWidgetCreated(
+      new WidgetCreatedEvent(widget.id, businessId),
     );
-
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await widgetListener.onWidgetCreated(widgetCreatedEvent);
-
     return widget;
   }
 
-  // Update widget
-  async updateWidget(businessId: string, data: {
-    title?: string;
-    theme?: string;
-    position?: string;
-    isEnabled?: boolean;
-    customCss?: string;
-  }) {
-    // Get widget for business
+  async updateWidget(businessId: string, data: UpdateWidgetInput): Promise<Widget> {
     const widget = await widgetRepository.findByBusinessId(businessId);
-    if (!widget) {
-      throw new Error('Widget not found for business');
-    }
+    if (!widget) throw new Error('Widget not found for business');
 
-    // Update widget
-    const updatedWidget = await widgetRepository.updateWidget(widget.id, data);
-
-    // Emit widget updated event
-    const widgetUpdatedEvent = new WidgetEvent.WidgetUpdatedEvent(
-      widget.id,
-      data
+    const updated = await widgetRepository.updateWidget(widget.id, {
+      title: data.title,
+      theme: data.theme,
+      position: data.position,
+      isEnabled: data.isEnabled,
+      customCss: data.customCss === undefined ? undefined : data.customCss,
+    });
+    await widgetListener.onWidgetUpdated(
+      new WidgetUpdatedEvent(updated.id, data),
     );
-
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await widgetListener.onWidgetUpdated(widgetUpdatedEvent);
-
-    return updatedWidget;
+    return updated;
   }
 
-  // Delete widget
-  async deleteWidget(businessId: string) {
-    // Get widget for business
+  async deleteWidget(businessId: string): Promise<Widget> {
     const widget = await widgetRepository.findByBusinessId(businessId);
-    if (!widget) {
-      throw new Error('Widget not found for business');
-    }
-
-    // Delete widget
-    const deletedWidget = await widgetRepository.deleteWidget(widget.id);
-
-    // Emit widget deleted event
-    const widgetDeletedEvent = new WidgetEvent.WidgetDeletedEvent(
-      widget.id
-    );
-
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await widgetListener.onWidgetDeleted(widgetDeletedEvent);
-
-    return deletedWidget;
+    if (!widget) throw new Error('Widget not found for business');
+    const deleted = await widgetRepository.deleteWidget(widget.id);
+    await widgetListener.onWidgetDeleted(new WidgetDeletedEvent(deleted.id));
+    return deleted;
   }
 }
 
-// Export singleton instance
 export const widgetService = new WidgetService();

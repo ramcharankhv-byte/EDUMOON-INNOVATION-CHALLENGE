@@ -1,35 +1,31 @@
-import { userRepository } from './repositories/user.repository';
-import { authRepository } from '../auth/repositories/auth.repository';
-import { logger } from '../../utils/logger';
-import { UserEvent } from './events/user.event';
-import { userListener } from './listeners/user.listener';
 import bcrypt from 'bcryptjs';
+import { Role, User } from '@prisma/client';
+import { userRepository } from '../repositories/user.repository';
+import { authRepository } from '../../auth/repositories/auth.repository';
+import logger from '../../utils/logger';
+import {
+  PasswordUpdatedEvent,
+  UserDeletedEvent,
+  UserUpdatedEvent,
+  UserVerifiedEvent,
+} from '../events/user.event';
+import { userListener } from '../listeners/user.listener';
 
-// User service
+const SALT_ROUNDS = 12;
+
+export interface UpdateUserInput {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  role?: Role;
+  password?: string;
+}
+
 export class UserService {
-  async getUserById(...args: any[]) { return null as any; }
-  async getUsers(...args: any[]) { return null as any; }
-  async updateUser(...args: any[]) { return null as any; }
-  async deleteUser(...args: any[]) { return null as any; }
-  async verifyUser(...args: any[]) { return null as any; }
-  async updatePassword(...args: any[]) { return null as any; }
-  async getUserCount(...args: any[]) { return null as any; }
-
-  private readonly SALT_ROUNDS = 12;
-
-  // Hash password
-  async hashPassword(password: string): Promise<string> {
-    const salt = await bcrypt.genSalt(this.SALT_ROUNDS);
-    return bcrypt.hash(password, salt);
-  }
-
-  // Verify password
-  async verifyPassword(password: string, hash: string): Promise<boolean> {
-    return bcrypt.compare(password, hash);
-  }
-
-  // Get user by ID
-  async getUserById(id: string) {
+  // ---------------------------------------------------------------------------
+  // Read
+  // ---------------------------------------------------------------------------
+  async getUserById(id: string): Promise<User> {
     const user = await userRepository.findById(id);
     if (!user) {
       throw new Error('User not found');
@@ -37,8 +33,7 @@ export class UserService {
     return user;
   }
 
-  // Get user by email
-  async getUserByEmail(email: string) {
+  async getUserByEmail(email: string): Promise<User> {
     const user = await userRepository.findByEmail(email);
     if (!user) {
       throw new Error('User not found');
@@ -46,33 +41,27 @@ export class UserService {
     return user;
   }
 
-  // Get users with pagination and filters
   async getUsers(
-    skip = 0,
-    take = 10,
-    filters: {
-      role?: string;
-      isVerified?: boolean;
-      searchTerm?: string;
-    } = {}
+    skip: number,
+    take: number,
+    filters: { role?: Role; isVerified?: boolean; searchTerm?: string } = {},
   ) {
     return userRepository.findMany(skip, take, filters);
   }
 
-  // Update user
-  async updateUser(id: string, data: {
-    firstName?: string;
-    lastName?: string;
-    email?: string;
-    role?: string;
-  }) {
-    // Check if user exists
+  async getUserCount(): Promise<number> {
+    return userRepository.countActive();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Mutate
+  // ---------------------------------------------------------------------------
+  async updateUser(id: string, data: UpdateUserInput): Promise<User> {
     const existing = await userRepository.findById(id);
     if (!existing) {
       throw new Error('User not found');
     }
 
-    // If email is being updated, check if it's already taken
     if (data.email && data.email !== existing.email) {
       const emailExists = await userRepository.findByEmail(data.email);
       if (emailExists) {
@@ -80,128 +69,74 @@ export class UserService {
       }
     }
 
-    // Hash password if provided
-    let passwordHash: string | undefined;
-    if (data.password) {
-      passwordHash = await this.hashPassword(data.password);
-    }
-
-    // Update user
-    const user = await userRepository.updateUser(id, {
+    const updateData: Parameters<typeof userRepository.updateUser>[1] = {
       firstName: data.firstName,
       lastName: data.lastName,
       email: data.email,
       role: data.role,
-      passwordHash
-    });
+    };
 
-    // Emit user updated event
-    const userUpdatedEvent = new UserEvent.UserUpdatedEvent(
-      user.id,
-      {
+    if (data.password) {
+      updateData.passwordHash = await this.hashPassword(data.password);
+    }
+
+    const user = await userRepository.updateUser(id, updateData);
+
+    await userListener.onUserUpdated(
+      new UserUpdatedEvent(user.id, {
         firstName: data.firstName,
         lastName: data.lastName,
         email: data.email,
-        role: data.role
-      }
+        role: data.role,
+      }),
     );
-
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await userListener.onUserUpdated(userUpdatedEvent);
 
     return user;
   }
 
-  // Delete user (soft delete)
-  async deleteUser(id: string) {
-    // Check if user exists
+  async updatePassword(id: string, currentPassword: string, newPassword: string): Promise<User> {
     const existing = await userRepository.findById(id);
     if (!existing) {
       throw new Error('User not found');
     }
-
-    // Soft delete user
-    const user = await userRepository.deleteUser(id);
-
-    // Emit user deleted event
-    const userDeletedEvent = new UserEvent.UserDeletedEvent(
-      user.id
-    );
-
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await userListener.onUserDeleted(userDeletedEvent);
-
-    return user;
-  }
-
-  // Verify user
-  async verifyUser(id: string) {
-    // Check if user exists
-    const existing = await userRepository.findById(id);
-    if (!existing) {
-      throw new Error('User not found');
+    const ok = await bcrypt.compare(currentPassword, existing.passwordHash);
+    if (!ok) {
+      throw new Error('Current password is incorrect');
     }
-
-    // Verify user
-    const user = await userRepository.verifyUser(id);
-
-    // Emit user verified event
-    const userVerifiedEvent = new UserEvent.UserVerifiedEvent(
-      user.id,
-      user.email
-    );
-
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await userListener.onUserVerified(userVerifiedEvent);
-
-    return user;
-  }
-
-  // Update user password
-  async updatePassword(id: string, password: string) {
-    // Check if user exists
-    const existing = await userRepository.findById(id);
-    if (!existing) {
-      throw new Error('User not found');
-    }
-
-    // Hash password
-    const passwordHash = await this.hashPassword(password);
-
-    // Update password
+    const passwordHash = await this.hashPassword(newPassword);
     const user = await userRepository.updatePassword(id, passwordHash);
-
-    // Emit password updated event
-    const passwordUpdatedEvent = new UserEvent.PasswordUpdatedEvent(
-      user.id
-    );
-
-    // TODO: Emit event to event bus
-    // For now, handle synchronously
-    await userListener.onPasswordUpdated(passwordUpdatedEvent);
-
+    await userListener.onPasswordUpdated(new PasswordUpdatedEvent(user.id));
     return user;
   }
 
-  // Set reset token
-  async setResetToken(id: string, token: string, expiry: Date) {
-    // Check if user exists
+  async deleteUser(id: string): Promise<User> {
     const existing = await userRepository.findById(id);
     if (!existing) {
       throw new Error('User not found');
     }
-
-    // Set reset token
-    const user = await userRepository.setResetToken(id, token, expiry);
-
+    const user = await userRepository.deleteUser(id);
+    await userListener.onUserDeleted(new UserDeletedEvent(user.id));
     return user;
   }
 
-  // Find user by reset token
-  async findByResetToken(token: string) {
+  async verifyUser(id: string): Promise<User> {
+    const existing = await userRepository.findById(id);
+    if (!existing) {
+      throw new Error('User not found');
+    }
+    const user = await userRepository.verifyUser(id);
+    await userListener.onUserVerified(new UserVerifiedEvent(user.id, user.email));
+    return user;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Password reset delegation
+  // ---------------------------------------------------------------------------
+  async setResetToken(id: string, token: string, expiry: Date): Promise<User> {
+    return authRepository.setResetToken(id, token, expiry);
+  }
+
+  async findByResetToken(token: string): Promise<User> {
     const user = await userRepository.findByResetToken(token);
     if (!user) {
       throw new Error('Invalid or expired reset token');
@@ -209,25 +144,17 @@ export class UserService {
     return user;
   }
 
-  // Clear reset token
-  async clearResetToken(id: string) {
-    // Check if user exists
-    const existing = await userRepository.findById(id);
-    if (!existing) {
-      throw new Error('User not found');
-    }
-
-    // Clear reset token
-    const user = await userRepository.clearResetToken(id);
-
-    return user;
+  async clearResetToken(id: string): Promise<User> {
+    return authRepository.clearResetToken(id);
   }
 
-  // Get user count
-  async getUserCount() {
-    return userRepository.findMany(0, 1000).then(result => result.total);
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+  async hashPassword(password: string): Promise<string> {
+    const salt = await bcrypt.genSalt(SALT_ROUNDS);
+    return bcrypt.hash(password, salt);
   }
 }
 
-// Export singleton instance
 export const userService = new UserService();

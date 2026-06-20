@@ -1,24 +1,28 @@
 import { z } from 'zod';
+import { JobStatus } from '@prisma/client';
 
-// Job creation schema
 export const createJobSchema = z.object({
-  name: z.string().min(1, 'Job name is required'),
-  type: z.string().min(1, 'Job type is required'),
+  name: z.string().min(1).max(200),
+  type: z.string().min(1).max(100),
   payload: z.record(z.unknown()).optional(),
-  scheduledAt: z.date().optional()
+  scheduledAt: z.coerce.date().optional(),
+  businessId: z.string().uuid().optional(),
 });
 
-// Job update schema
 export const updateJobSchema = z.object({
-  name: z.string().min(1, 'Job name is required').optional(),
-  type: z.string().min(1, 'Job type is required').optional(),
+  name: z.string().min(1).max(200).optional(),
+  type: z.string().min(1).max(100).optional(),
   payload: z.record(z.unknown()).optional(),
-  scheduledAt: z.date().optional(),
-  status: z.enum(['pending', 'processing', 'completed', 'failed']).optional()
+  scheduledAt: z.coerce.date().nullable().optional(),
+  status: z.nativeEnum(JobStatus).optional(),
 });
 
-// Export schemas
+export const failJobSchema = z.object({
+  errorMessage: z.string().min(1).max(2000),
+});
+
 export const jobValidators = {
   create: createJobSchema,
-  update: updateJobSchema
+  update: updateJobSchema,
+  fail: failJobSchema,
 };

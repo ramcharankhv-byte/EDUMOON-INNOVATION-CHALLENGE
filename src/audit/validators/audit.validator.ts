@@ -1,19 +1,33 @@
 import { z } from 'zod';
 
-// Audit creation schema
+const readinessScore = z.number().int().min(0).max(100);
+
 export const createAuditSchema = z.object({
-  readinessScore: z.number().int().min(0).max(100),
-  businessSummary: z.string().optional(),
-  aiOpportunities: z.string().optional(), // JSON string
-  automationSuggestions: z.string().optional(), // JSON string
-  estimatedBenefits: z.string().optional(), // JSON string
-  strengths: z.string().optional(), // JSON string
-  weaknesses: z.string().optional(), // JSON string
-  suggestedSolutions: z.string().optional(), // JSON string
-  expectedRoi: z.string().optional() // JSON string
+  businessId: z.string().uuid(),
+  readinessScore,
+  businessSummary: z.string().max(10_000).optional(),
+  aiOpportunities: z.array(z.unknown()).optional(),
+  automationSuggestions: z.array(z.unknown()).optional(),
+  estimatedBenefits: z.record(z.unknown()).optional(),
+  strengths: z.array(z.unknown()).optional(),
+  weaknesses: z.array(z.unknown()).optional(),
+  suggestedSolutions: z.array(z.unknown()).optional(),
+  expectedRoi: z.record(z.unknown()).optional(),
 });
 
-// Export schema
+export const updateAuditSchema = z.object({
+  readinessScore: readinessScore.optional(),
+  businessSummary: z.string().max(10_000).nullable().optional(),
+  aiOpportunities: z.array(z.unknown()).nullable().optional(),
+  automationSuggestions: z.array(z.unknown()).nullable().optional(),
+  estimatedBenefits: z.record(z.unknown()).nullable().optional(),
+  strengths: z.array(z.unknown()).nullable().optional(),
+  weaknesses: z.array(z.unknown()).nullable().optional(),
+  suggestedSolutions: z.array(z.unknown()).nullable().optional(),
+  expectedRoi: z.record(z.unknown()).nullable().optional(),
+});
+
 export const auditValidators = {
-  create: createAuditSchema
+  create: createAuditSchema,
+  update: updateAuditSchema,
 };

@@ -1,204 +1,159 @@
 import { Request, Response, NextFunction } from 'express';
-import { createChatSessionSchema, createChatMessageSchema } from '../validators/chat.validator';
-import { chatService } from './services/chat.service';
+import {
+  createChatSessionSchema,
+  createChatMessageSchema,
+  endChatSessionSchema,
+} from '../validators/chat.validator';
+import { chatService } from '../services/chat.service';
+import { businessRepository } from '../../business/repositories/business.repository';
 import { logger } from '../../utils/logger';
-import { authenticate } from '../../middleware/auth.middleware';
 
-// Chat controller
 export class ChatController {
-  async createSession(...args: any[]) { return null as any; }
-  async getBySessionToken(...args: any[]) { return null as any; }
-  async createMessage(...args: any[]) { return null as any; }
-  async getMessages(...args: any[]) { return null as any; }
-  async endSession(...args: any[]) { return null as any; }
-  async getByBusinessId(...args: any[]) { return null as any; }
-  async getByVisitorId(...args: any[]) { return null as any; }
-  async getActiveSessions(...args: any[]) { return null as any; }
-
-  // Create chat session
+  // POST /api/chat/session — create chat session (widget / business owner)
   async createSession(req: Request, res: Response, next: NextFunction) {
     try {
-      // Validate input
-      const validatedData = createChatSessionSchema.parse(req.body);
+      const data = createChatSessionSchema.parse(req.body);
 
-      // Get user ID from authenticated request (for business owner)
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      // Resolve business from either the explicit body field or the
+      // authenticated user's business.
+      let businessId = data.businessId;
+      if (!businessId) {
+        const userId = req.user?.id;
+        if (!userId) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const business = await businessRepository.findByUserId(userId);
+        if (!business) {
+          return res.status(404).json({ error: 'Business not found' });
+        }
+        businessId = business.id;
       }
 
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
-      if (!business) {
-        return res.status(404).json({ error: 'Business not found' });
-      }
+      const visitorId = data.visitorId ?? `temp-visitor-${Date.now()}`;
 
-      // Visitor ID would come from cookie or header in real implementation
-      // For now, we'll generate a temporary visitor ID or use a dummy one
-      // In a real implementation, this would be handled via middleware that tracks visitors
-      const visitorId = validatedData.visitorId || `temp-visitor-${Date.now()}`;
-
-      // Create chat session
-      const chatSession = await chatService.createChatSession(visitorId, business.id);
+      const chatSession = await chatService.createChatSession(visitorId, businessId);
 
       return res.status(201).json({
         message: 'Chat session created successfully',
         chatSession: {
           id: chatSession.id,
           sessionToken: chatSession.sessionToken,
-          startedAt: chatSession.startedAt
-        }
+          startedAt: chatSession.startedAt,
+        },
       });
     } catch (error) {
-      next(error);
+      logger.error('Create chat session failed', error);
+      return next(error);
     }
   }
 
-  // Get chat session by session token (used by widget)
+  // GET /api/chat/session/:sessionToken — lookup by widget token
   async getBySessionToken(req: Request, res: Response, next: NextFunction) {
     try {
       const { sessionToken } = req.params;
-
-      // Get chat session
       const chatSession = await chatService.getChatSessionBySessionToken(sessionToken);
-
-      return res.status(200).json({
-        chatSession
-      });
+      return res.status(200).json({ chatSession });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get chat sessions by business ID
+  // GET /api/chat/business — list sessions for the authenticated user's business
   async getByBusinessId(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
+      const business = await businessRepository.findByUserId(userId);
       if (!business) {
         return res.status(404).json({ error: 'Business not found' });
       }
-
-      // Get chat sessions
       const chatSessions = await chatService.getChatSessionsByBusinessId(business.id);
-
-      return res.status(200).json({
-        chatSessions
-      });
+      return res.status(200).json({ chatSessions });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get chat sessions by visitor ID
+  // GET /api/chat/visitor/:visitorId — list sessions for a given visitor
   async getByVisitorId(req: Request, res: Response, next: NextFunction) {
     try {
       const { visitorId } = req.params;
-
-      // Get chat sessions
       const chatSessions = await chatService.getChatSessionsByVisitorId(visitorId);
-
-      return res.status(200).json({
-        chatSessions
-      });
+      return res.status(200).json({ chatSessions });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Create message
+  // POST /api/chat/:chatSessionId/message
   async createMessage(req: Request, res: Response, next: NextFunction) {
     try {
       const { chatSessionId } = req.params;
-
-      // Validate input
-      const validatedData = createChatMessageSchema.parse(req.body);
-
-      // Create message
+      const data = createChatMessageSchema.parse(req.body);
       const message = await chatService.createMessage(
         chatSessionId,
-        validatedData.content,
-        validatedData.isFromUser
+        data.content,
+        data.isFromUser,
       );
-
       return res.status(201).json({
         message: 'Message created successfully',
-        message
+        result: message,
+        chatSessionId,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get messages for chat session
+  // GET /api/chat/:chatSessionId/messages
   async getMessages(req: Request, res: Response, next: NextFunction) {
     try {
       const { chatSessionId } = req.params;
-
-      // Get messages
       const messages = await chatService.getMessagesByChatSessionId(chatSessionId);
-
-      return res.status(200).json({
-        messages
-      });
+      return res.status(200).json({ messages });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // End chat session
+  // POST /api/chat/:chatSessionId/end
   async endSession(req: Request, res: Response, next: NextFunction) {
     try {
       const { chatSessionId } = req.params;
-      const { satisfactionScore, feedback } = req.body;
-
-      // Validate satisfactionScore if provided
-      if (satisfactionScore !== undefined && (satisfactionScore < 1 || satisfactionScore > 5 || !Number.isInteger(satisfactionScore))) {
-        return res.status(400).json({ error: 'Satisfaction score must be an integer between 1 and 5' });
-      }
-
-      // End chat session
-      const chatSession = await chatService.endChatSession(chatSessionId, satisfactionScore, feedback);
-
+      const data = endChatSessionSchema.parse(req.body);
+      const chatSession = await chatService.endChatSession(
+        chatSessionId,
+        data.satisfactionScore,
+        data.feedback,
+      );
       return res.status(200).json({
         message: 'Chat session ended successfully',
-        chatSession
+        chatSession,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
-  // Get active chat sessions for business
+  // GET /api/chat/active-sessions — sessions with no endedAt for the auth'd business
   async getActiveSessions(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
-
-      // Get business for user
-      const business = await req.context.businessRepository.findByUserId(userId);
+      const business = await businessRepository.findByUserId(userId);
       if (!business) {
         return res.status(404).json({ error: 'Business not found' });
       }
-
-      // Get active chat sessions
       const activeSessions = await chatService.getActiveChatSessionsByBusinessId(business.id);
-
-      return res.status(200).json({
-        activeSessions
-      });
+      return res.status(200).json({ activeSessions });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 }
 
-// Export singleton instance
 export const chatController = new ChatController();

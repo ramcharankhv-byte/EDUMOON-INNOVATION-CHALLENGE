@@ -17,18 +17,14 @@ export class AnalyticsCreatedEvent {
 
 export class AnalyticsUpdatedEvent {
   public readonly analyticsId: string;
-  public readonly updates: Partial<{
-    metricValue: number;
+  public readonly updates: {
+    metricValue?: number;
     labels?: string;
     date?: Date;
-  }>;
+  };
   public readonly timestamp: Date;
 
-  constructor(analyticsId: string, updates: Partial<{
-    metricValue: number;
-    labels?: string;
-    date?: Date;
-  }>) {
+  constructor(analyticsId: string, updates: { metricValue?: number; labels?: string; date?: Date }) {
     this.analyticsId = analyticsId;
     this.updates = updates;
     this.timestamp = new Date();

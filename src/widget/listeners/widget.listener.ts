@@ -1,56 +1,34 @@
-import { logger } from '../../utils/logger';
-import { prisma } from '../../lib/prisma';
-import { WidgetCreatedEvent } from './widget.event';
-import { WidgetUpdatedEvent } from './widget.event';
-import { WidgetDeletedEvent } from './widget.event';
+import logger from '../../utils/logger';
+import {
+  WidgetCreatedEvent,
+  WidgetDeletedEvent,
+  WidgetUpdatedEvent,
+} from '../events/widget.event';
 
-// Widget listeners for handling side effects
 export class WidgetListener {
-  async onWidgetCreated(...args: any[]) { return null as any; }
-  async onWidgetUpdated(...args: any[]) { return null as any; }
-  async onWidgetDeleted(...args: any[]) { return null as any; }
-
-  // Handle widget created event
-  async onWidgetCreated(event: WidgetCreatedEvent) {
+  async onWidgetCreated(event: WidgetCreatedEvent): Promise<void> {
     try {
-      logger.info(`Widget created: ${event.widgetId} for business ${event.businessId}`);
-
-      // TODO: Notify user
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onWidgetCreated listener:', error);
+      logger.info({ widgetId: event.widgetId, businessId: event.businessId }, 'Widget created');
+    } catch (err) {
+      logger.error('Error in onWidgetCreated listener', err);
     }
   }
 
-  // Handle widget updated event
-  async onWidgetUpdated(event: WidgetUpdatedEvent) {
+  async onWidgetUpdated(event: WidgetUpdatedEvent): Promise<void> {
     try {
-      logger.info(`Widget updated: ${event.widgetId}`);
-
-      // TODO: Clear relevant caches
-      // TODO: Notify user if needed
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onWidgetUpdated listener:', error);
+      logger.info({ widgetId: event.widgetId }, 'Widget updated');
+    } catch (err) {
+      logger.error('Error in onWidgetUpdated listener', err);
     }
   }
 
-  // Handle widget deleted event
-  async onWidgetDeleted(event: WidgetDeletedEvent) {
+  async onWidgetDeleted(event: WidgetDeletedEvent): Promise<void> {
     try {
-      logger.info(`Widget deleted: ${event.widgetId}`);
-
-      // TODO: Clean up associated data
-      // TODO: Notify user if needed
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onWidgetDeleted listener:', error);
+      logger.info({ widgetId: event.widgetId }, 'Widget deleted');
+    } catch (err) {
+      logger.error('Error in onWidgetDeleted listener', err);
     }
   }
 }
 
-// Export singleton instance
 export const widgetListener = new WidgetListener();

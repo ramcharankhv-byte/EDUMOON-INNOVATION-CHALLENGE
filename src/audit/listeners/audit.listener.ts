@@ -1,53 +1,41 @@
-import { logger } from '../../utils/logger';
-import { prisma } from '../../lib/prisma';
-import { AuditCreatedEvent } from './audit.event';
-import { AuditUpdatedEvent } from './audit.event';
-import { AuditDeletedEvent } from './audit.event';
+import logger from '../../utils/logger';
+import {
+  AuditCreatedEvent,
+  AuditDeletedEvent,
+  AuditUpdatedEvent,
+} from '../events/audit.event';
 
-// Audit listeners for handling side effects
 export class AuditListener {
-  // Handle audit created event
-  async onAuditCreated(event: AuditCreatedEvent) {
+  async onAuditCreated(event: AuditCreatedEvent): Promise<void> {
     try {
-      logger.info(`Audit created: ${event.auditId} for business ${event.businessId} with score ${event.readinessScore}`);
-
-      // TODO: Notify user that audit is complete
-      // TODO: Update analytics
-      // TODO: Trigger any follow-up actions based on score
-
-    } catch (error) {
-      logger.error('Error in onAuditCreated listener:', error);
+      logger.info(
+        {
+          auditId: event.auditId,
+          businessId: event.businessId,
+          readinessScore: event.readinessScore,
+        },
+        'Audit created',
+      );
+    } catch (err) {
+      logger.error('Error in onAuditCreated listener', err);
     }
   }
 
-  // Handle audit updated event
-  async onAuditUpdated(event: AuditUpdatedEvent) {
+  async onAuditUpdated(event: AuditUpdatedEvent): Promise<void> {
     try {
-      logger.info(`Audit updated: ${event.auditId}`);
-
-      // TODO: Clear relevant caches
-      // TODO: Notify user if needed
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onAuditUpdated listener:', error);
+      logger.info({ auditId: event.auditId }, 'Audit updated');
+    } catch (err) {
+      logger.error('Error in onAuditUpdated listener', err);
     }
   }
 
-  // Handle audit deleted event
-  async onAuditDeleted(event: AuditDeletedEvent) {
+  async onAuditDeleted(event: AuditDeletedEvent): Promise<void> {
     try {
-      logger.info(`Audit deleted: ${event.auditId}`);
-
-      // TODO: Clean up associated data
-      // TODO: Notify user if needed
-      // TODO: Update analytics
-
-    } catch (error) {
-      logger.error('Error in onAuditDeleted listener:', error);
+      logger.info({ auditId: event.auditId }, 'Audit deleted');
+    } catch (err) {
+      logger.error('Error in onAuditDeleted listener', err);
     }
   }
 }
 
-// Export singleton instance
 export const auditListener = new AuditListener();
