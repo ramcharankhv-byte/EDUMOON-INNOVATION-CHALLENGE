@@ -1,6 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 
+
+//to fix few bugs
+const name = "ramcharan"
 const logOutput = fs.readFileSync('tsc-errors2.log', 'utf16le');
 
 // 1. Fix missing modules
